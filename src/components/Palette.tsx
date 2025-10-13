@@ -6,7 +6,7 @@ import { PaletteItemData } from '@/lib/types';
 import PaletteIcon from '@/components/PaletteIcon';
 
 const Palette = () => {
-  const { addObject, camera, fittings, toggleFittingsModal } = useAppStore();
+  const { addObject, camera, fittings, toggleFittingsModal, isPaletteOpen } = useAppStore();
   const [systemName, setSystemName] = useState('SA-1');
   const [diameter, setDiameter] = useState(100);
 
@@ -28,41 +28,52 @@ const Palette = () => {
 
   const handleAddClick = () => {
     if (diameter > 0) {
+      const worldCenter = { x: camera.x, y: camera.y }; // Simplified for now
       addObject('StraightDuct', { 
         systemName,
         diameter,
-        length: 200, // ★ 400から200に変更
-        x: camera.x,
-        y: camera.y,
+        length: 200,
+        x: worldCenter.x,
+        y: worldCenter.y,
       });
     }
   };
 
+  const paletteClasses = isPaletteOpen 
+    ? "w-full md:w-64 bg-white shadow-lg p-4 overflow-y-auto order-first md:order-last flex flex-col"
+    : "hidden";
+
   return (
-    <aside className="w-full md:w-64 bg-white shadow-lg p-4 flex flex-col flex-shrink-0 order-first md:order-last">
-      <div className="mb-6 border-b pb-4">
-        <div className="space-y-2">
-          <div><input type="text" value={systemName} onChange={(e) => setSystemName(e.target.value)} className="w-full p-2 border rounded-md" placeholder="系統名"/></div>
-          <div><input type="number" value={diameter} onChange={(e) => setDiameter(parseInt(e.target.value, 10))} step="25" min="25" className="w-full p-2 border rounded-md" placeholder="直径 (mm)"/></div>
-          <button onClick={handleAddClick} className="w-full bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-indigo-700">直管を追加</button>
+    <aside id="palette" className={paletteClasses}>
+        <div className="mb-6">
+            <div className="space-y-2">
+                 <div>
+                    <input type="text" value={systemName} onChange={(e) => setSystemName(e.target.value)} className="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500" placeholder="系統名" />
+                </div>
+                <div>
+                    <input type="number" value={diameter} onChange={(e) => setDiameter(parseInt(e.target.value, 10))} step="25" min="25" className="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500" placeholder="直径 (mm)" />
+                </div>
+                <button onClick={handleAddClick} className="w-full bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-indigo-700 transition-colors">
+                    直管を追加
+                </button>
+            </div>
         </div>
-      </div>
-      <div className="mb-6 border-b pb-4">
-         <button onClick={toggleFittingsModal} className="w-full bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-md hover:bg-gray-300">継手管理</button>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-4 overflow-y-auto pr-2 h-44 md:h-auto md:overflow-visible">
-        {visibleFittings.map((item) => (
-          <div 
-            key={item.id} 
-            className="p-2 border rounded-md shadow-sm cursor-grab bg-gray-50 hover:bg-indigo-100 flex items-center justify-center"
-            draggable={true} 
-            onDragStart={(e) => handleDragStart(e, item)}
-          >
-            <PaletteIcon item={item} />
-          </div>
-        ))}
-      </div>
+        <div className="mb-6 border-t pt-4">
+             <button onClick={toggleFittingsModal} className="w-full bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-md hover:bg-gray-300 transition-colors">継手管理</button>
+        </div>
+        <div id="palette-items" className="grid grid-cols-2 gap-4 flex-1 overflow-y-auto pr-1">
+            {visibleFittings.map((item) => (
+              <div 
+                key={item.id} 
+                className="bg-white p-2 border rounded-md shadow-sm cursor-grab text-center transition-all duration-200 ease-in-out hover:scale-105 hover:shadow-md flex flex-col items-center justify-center"
+                draggable={true} 
+                onDragStart={(e) => handleDragStart(e, item)}
+              >
+                <PaletteIcon item={item} />
+                <p className='text-sm mt-1 font-medium'>{item.name}</p>
+              </div>
+            ))}
+        </div>
     </aside>
   );
 };

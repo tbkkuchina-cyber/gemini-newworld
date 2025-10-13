@@ -99,15 +99,23 @@ export interface AppActions {
   rotateSelectedObject: () => void;
   flipSelectedObject: () => void;
   recalculateGroups: () => void;
+  mergeGroups: (sourceGroupId: number, targetGroupId: number) => void;
   disconnectObject: (id: number) => void;
 
   // 寸法線操作
   addDimension: (p1: SnapPoint, p2: SnapPoint) => void;
+  applyDimensionAdjustment: (p1: SnapPoint, p2: SnapPoint, totalDistance: number) => void;
   updateStraightRunDimensions: () => void;
 
   // カメラ操作
   panCamera: (dx: number, dy: number) => void;
   zoomCamera: (delta: number, worldMousePos: { x: number; y: number }) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetView: () => void;
+
+  // キャンバス操作
+  clearCanvas: () => void;
   
   // UI操作
   togglePalette: () => void;

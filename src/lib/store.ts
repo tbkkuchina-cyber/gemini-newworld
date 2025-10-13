@@ -13,8 +13,33 @@ import {
     DimensionLine,
     Point
 } from '@/lib/objects';
-import { AppState, AppActions, DuctPartOptions, DuctPartType, HistoryState, FittingsData } from '@/lib/types';
+import { AppState, AppActions, DuctPartOptions, DuctPartType } from '@/lib/types';
 import { fittingsMaster } from './fittingsMaster';
+
+// Helper function translated from duct-app-script.js
+function getLegLength(obj: DuctPart, conn: { id: string | number; type?: string }): number {
+    if (!obj || !conn) return 0;
+    if (conn.id === 'center') return 0;
+    
+    switch(obj.type) {
+        case 'Elbow90':
+        case 'AdjustableElbow':
+            return (obj as Elbow90 | AdjustableElbow).legLength;
+        case 'TeeReducer':
+             if (conn.type === 'branch') return (obj as TeeReducer).branchLength;
+             if (conn.id === 0) return (obj as TeeReducer).length / 2 + (obj as TeeReducer).intersectionOffset;
+             if (conn.id === 1) return (obj as TeeReducer).length / 2 - (obj as TeeReducer).intersectionOffset;
+             return (obj as TeeReducer).length / 2;
+        case 'YBranch':
+        case 'YBranchReducer':
+             if (conn.type === 'branch') return (obj as YBranch).branchLength;
+             if (conn.id === 0) return (obj as YBranch).length / 2 + (obj as YBranch).intersectionOffset;
+             if (conn.id === 1) return (obj as YBranch).length / 2 - (obj as YBranch).intersectionOffset;
+             return (obj as YBranch).length / 2;
+        default:
+            return 0;
+    }
+}
 
 const CONNECTION_TOLERANCE = 5;
 
@@ -139,6 +164,16 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
         });
         recalculateGroups();
         saveHistory();
+    },
+
+    mergeGroups: (sourceGroupId, targetGroupId) => {
+        set(state => {
+            state.objects.forEach(obj => {
+                if (obj.groupId === targetGroupId) {
+                    obj.groupId = sourceGroupId;
+                }
+            });
+        });
     },
 
     recalculateGroups: () => {
@@ -301,6 +336,130 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
             state.camera.y = newCamY;
             state.camera.zoom = newZoom;
         });
+    },
+
+    // Actions for Toolbar
+    zoomIn: () => set(state => { state.camera.zoom *= 1.2 }),
+    zoomOut: () => set(state => { state.camera.zoom /= 1.2 }),
+    resetView: () => set(state => {
+        state.camera.x = 0;
+        state.camera.y = 0;
+        state.camera.zoom = 0.8;
+    }),
+    clearCanvas: () => {
+        // TODO: Add a confirmation modal before clearing
+        set(state => {
+            state.objects = [];
+            state.dimensions = [];
+            state.selectedObjectId = null;
+        });
+        get().saveHistory();
+    },
+
+    applyDimensionAdjustment: (p1_info, p2_info, totalDistance) => {
+        set(state => {
+            const obj1 = state.objects.find(o => o.id === p1_info.objectId);
+            const obj2 = state.objects.find(o => o.id === p2_info.objectId);
+            if (!obj1 || !obj2) return;
+
+            let ductToUpdate: StraightDuct | null = null;
+            if (obj1.groupId === obj2.groupId) {
+                if (obj1.type === 'StraightDuct' && obj1.id === obj2.id) {
+                    ductToUpdate = obj1 as StraightDuct;
+                } else {
+                    const straightDuctsInGroup = state.objects.filter(o => o.groupId === obj1.groupId && o.type === 'StraightDuct');
+                    for (const duct of straightDuctsInGroup) {
+                        const conns = duct.getConnectors();
+                        const connectsTo1 = conns.some(c1 => obj1.getConnectors().some(c2 => Math.hypot(c1.x - c2.x, c1.y - c2.y) < CONNECTION_TOLERANCE));
+                        const connectsTo2 = conns.some(c1 => obj2.getConnectors().some(c2 => Math.hypot(c1.x - c2.x, c1.y - c2.y) < CONNECTION_TOLERANCE));
+                        if (connectsTo1 && connectsTo2) {
+                            ductToUpdate = duct as StraightDuct;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (ductToUpdate) {
+                const getConnectedLegLength = (fitting: DuctPart, duct: DuctPart) => {
+                    if (!fitting || !duct || fitting.type === 'StraightDuct') return 0;
+                    const ductConns = duct.getConnectors();
+                    const fittingConns = fitting.getConnectors();
+                    let relevantConn = null;
+                    for (const fc of fittingConns) {
+                        if (ductConns.some(dc => Math.hypot(fc.x - dc.x, dc.y - dc.y) < CONNECTION_TOLERANCE)) {
+                            relevantConn = fc;
+                            break;
+                        }
+                    }
+                    return getLegLength(fitting, relevantConn!);
+                };
+
+                const lengthToSubtract = getConnectedLegLength(obj1, ductToUpdate) + getConnectedLegLength(obj2, ductToUpdate);
+                const finalDuctLength = totalDistance - lengthToSubtract;
+
+                if (finalDuctLength < 0) {
+                    console.error("Error: Calculated duct length is negative.");
+                    return; // Abort state change
+                }
+
+                const oldLength = ductToUpdate.length;
+                const ductConns = ductToUpdate.getConnectors();
+                const isP1CloserToConn0 = Math.hypot(p1_info.x - ductConns[0].x, p1_info.y - ductConns[0].y) < Math.hypot(p1_info.x - ductConns[1].x, p1_info.y - ductConns[1].y);
+                const anchorConnPoint = isP1CloserToConn0 ? ductConns[0] : ductConns[1];
+                const movingConnPoint = isP1CloserToConn0 ? ductConns[1] : ductConns[0];
+                
+                const direction = (oldLength > 0.1) ? { x: (movingConnPoint.x - anchorConnPoint.x) / oldLength, y: (movingConnPoint.y - anchorConnPoint.y) / oldLength } : {x: Math.cos(ductToUpdate.rotation * Math.PI / 180), y: Math.sin(ductToUpdate.rotation * Math.PI/180)};
+                const lengthChange = finalDuctLength - oldLength;
+                const dx = direction.x * lengthChange;
+                const dy = direction.y * lengthChange;
+
+                const movingBranchRoot = state.objects.find(o => o.id !== ductToUpdate!.id && o.getConnectors().some(c => Math.hypot(c.x - movingConnPoint.x, c.y - movingConnPoint.y) < CONNECTION_TOLERANCE));
+                const objectsToMove = new Set<number>();
+                if (movingBranchRoot) {
+                    const queue = [movingBranchRoot];
+                    objectsToMove.add(movingBranchRoot.id);
+                    let head = 0;
+                    while(head < queue.length){
+                        const current = queue[head++]!;
+                        for (const neighbor of state.objects) {
+                           if (neighbor.groupId === current.groupId && !objectsToMove.has(neighbor.id) && neighbor.id !== ductToUpdate.id) {
+                               if (current.getConnectors().some(c1 => neighbor.getConnectors().some(c2 => Math.hypot(c1.x - c2.x, c1.y - c2.y) < CONNECTION_TOLERANCE))) {
+                                   objectsToMove.add(neighbor.id);
+                                   queue.push(neighbor);
+                               }
+                           }
+                        }
+                    }
+                }
+                
+                state.objects.forEach(obj => {
+                    if (objectsToMove.has(obj.id)) {
+                        obj.x += dx;
+                        obj.y += dy;
+                    }
+                });
+                
+                const duct = state.objects.find(o => o.id === ductToUpdate!.id) as StraightDuct;
+                if(duct) {
+                    duct.length = finalDuctLength;
+                    duct.x = anchorConnPoint.x + direction.x * finalDuctLength / 2;
+                    duct.y = anchorConnPoint.y + direction.y * finalDuctLength / 2;
+                }
+            }
+
+            // Add or update the dimension line
+            const newDim = new DimensionLine(p1_info, p2_info, { value: totalDistance });
+            const dimKey = `${[p1_info.objectId, p2_info.objectId].sort().join('-')}`;
+            const existingDimIndex = state.dimensions.findIndex(d => d.id === dimKey);
+            if (existingDimIndex > -1) {
+                state.dimensions[existingDimIndex] = newDim;
+            } else {
+                newDim.id = dimKey; // Assign a stable ID
+                state.dimensions.push(newDim);
+            }
+        });
+        get().saveHistory();
     },
 
     togglePalette: () => {

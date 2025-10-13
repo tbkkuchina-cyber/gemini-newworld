@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useAppStore } from '@/lib/store';
-import { DuctPart, DimensionLine } from '@/lib/objects';
+import { DuctPart } from '@/lib/objects';
 import { PaletteItemData, SnapPoint, Point } from '@/lib/types';
 import ContextMenu from '@/components/ContextMenu';
 
@@ -53,36 +53,43 @@ const CanvasArea = () => {
     selectedObjectId,
     updateObjectPosition,
     addObject,
-    addDimension,
+    applyDimensionAdjustment,
     saveHistory,
-    recalculateGroups,
+    mergeGroups,
     mode,
+    rotateSelectedObject,
+    deleteObject,
+    undo,
+    redo,
   } = useAppStore();
 
-  const [interactionMode, setInteractionMode] = useState<'idle' | 'pan' | 'drag'>('idle');
+  const [interactionMode, setInteractionMode] = useState<'idle' | 'pan' | 'drag' | 'pinch'>('idle');
   const dragInfo = useRef({
     target: null as DuctPart | null,
     group: [] as { obj: DuctPart, initialX: number, initialY: number }[],
-    startX: 0,
-    startY: 0,
+    worldStartX: 0,
+    worldStartY: 0,
     hasDragged: false,
   });
 
   const panStart = useRef({ x: 0, y: 0 });
+  const pinchState = useRef({ initialDist: 0 });
+  const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const [measureStartPoint, setMeasureStartPoint] = useState<SnapPoint | null>(null);
   const [currentSnapPoint, setCurrentSnapPoint] = useState<SnapPoint | null>(null);
   const [editingDimension, setEditingDimension] = useState<{p1: SnapPoint, p2: SnapPoint} | null>(null);
 
-  const worldToScreen = (worldX: number, worldY: number) => {
+  const worldToScreen = useCallback((worldX: number, worldY: number) => {
     const canvas = canvasRef.current!;
     const screenX = (worldX - camera.x) * camera.zoom + canvas.width / 2;
     const screenY = (worldY - camera.y) * camera.zoom + canvas.height / 2;
     return { x: screenX, y: screenY };
-  };
+  }, [camera.x, camera.y, camera.zoom]);
 
-  const getWorldMousePos = (clientX: number, clientY: number) => {
+  const getWorldMousePos = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
     const screenX = clientX - rect.left;
@@ -92,7 +99,7 @@ const CanvasArea = () => {
     const worldY = (screenY - canvas.height / 2) / camera.zoom + camera.y;
 
     return { x: worldX, y: worldY };
-  };
+  }, [camera.x, camera.y, camera.zoom]);
 
   const findSnapPoint = (worldPos: Point): SnapPoint | null => {
     const snapDistSq = (SNAP_DISTANCE / camera.zoom) ** 2;
@@ -136,7 +143,7 @@ const CanvasArea = () => {
       resizeObserver.unobserve(parent);
       canvas.removeEventListener('wheel', handleWheel);
     };
-  }, [zoomCamera]);
+  }, [zoomCamera, getWorldMousePos]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -238,9 +245,50 @@ const CanvasArea = () => {
     renderLoop();
 
     return () => window.cancelAnimationFrame(animationFrameId);
-  }, [objects, dimensions, camera, selectedObjectId, measureStartPoint, currentSnapPoint]);
+  }, [objects, dimensions, camera, selectedObjectId, measureStartPoint, currentSnapPoint, mode, worldToScreen]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'z') {
+          e.preventDefault();
+          undo();
+        }
+        if (e.key === 'y') {
+          e.preventDefault();
+          redo();
+        }
+        return; // Prevent other shortcuts when Ctrl/Meta is pressed
+      }
+
+      if (selectedObjectId !== null) {
+        if (e.key === 'r' || e.key === 'R') {
+          e.preventDefault();
+          rotateSelectedObject();
+        }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          deleteObject(selectedObjectId);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedObjectId, undo, redo, rotateSelectedObject, deleteObject]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (activePointers.current.size === 2) {
+        setInteractionMode('pinch');
+        const pointers = Array.from(activePointers.current.values());
+        pinchState.current.initialDist = Math.hypot(pointers[0].x - pointers[1].x, pointers[0].y - pointers[1].y);
+        return;
+    }
+
     if (e.button !== 0) return;
 
     if (mode === 'measure') {
@@ -264,7 +312,7 @@ const CanvasArea = () => {
       setInteractionMode('drag');
       const dragGroupId = clickedObject.groupId;
       const groupToDrag = objects.filter(obj => obj.groupId === dragGroupId).map(obj => ({ obj, initialX: obj.x, initialY: obj.y }));
-      dragInfo.current = { target: clickedObject, group: groupToDrag, startX: worldPos.x, startY: worldPos.y, hasDragged: false };
+      dragInfo.current = { target: clickedObject, group: groupToDrag, worldStartX: worldPos.x, worldStartY: worldPos.y, hasDragged: false };
       e.currentTarget.style.cursor = 'move';
     } else {
       selectObject(null);
@@ -275,6 +323,23 @@ const CanvasArea = () => {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (activePointers.current.has(e.pointerId)) {
+        activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    if (interactionMode === 'pinch' && activePointers.current.size === 2) {
+        const pointers = Array.from(activePointers.current.values());
+        const newDist = Math.hypot(pointers[0].x - pointers[1].x, pointers[0].y - pointers[1].y);
+        const delta = pinchState.current.initialDist - newDist;
+
+        const midpoint = { x: (pointers[0].x + pointers[1].x) / 2, y: (pointers[0].y + pointers[1].y) / 2 };
+        const worldMousePos = getWorldMousePos(midpoint.x, midpoint.y);
+
+        zoomCamera(delta * 2, worldMousePos); // Multiply delta for more sensitivity
+        pinchState.current.initialDist = newDist;
+        return;
+    }
+
     const worldPos = getWorldMousePos(e.clientX, e.clientY);
 
     if (mode === 'measure') {
@@ -289,8 +354,8 @@ const CanvasArea = () => {
       panStart.current = { x: e.clientX, y: e.clientY };
     } else if (interactionMode === 'drag' && dragInfo.current.target) {
       dragInfo.current.hasDragged = true;
-      const total_dx = worldPos.x - dragInfo.current.startX;
-      const total_dy = worldPos.y - dragInfo.current.startY;
+      const total_dx = worldPos.x - dragInfo.current.worldStartX;
+      const total_dy = worldPos.y - dragInfo.current.worldStartY;
       dragInfo.current.group.forEach(item => {
         updateObjectPosition(item.obj.id, item.initialX + total_dx, item.initialY + total_dy);
       });
@@ -298,37 +363,54 @@ const CanvasArea = () => {
   };
   
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (interactionMode === 'drag' && dragInfo.current.target && dragInfo.current.hasDragged) {
-      const { group, startX, startY } = dragInfo.current;
-      const worldPos = getWorldMousePos(e.clientX, e.clientY);
-      const total_dx = worldPos.x - startX;
-      const total_dy = worldPos.y - startY;
+    activePointers.current.delete(e.pointerId);
 
-      if (group.length === 1) {
-        let bestSnap = { dist: CONNECT_DISTANCE, dx: 0, dy: 0 };
-        const draggedConnectors = group[0].obj.getConnectors();
-        for (const otherObject of objects) {
-          if (group[0].obj.id === otherObject.id) continue;
-          for (const otherConn of otherObject.getConnectors()) {
-            for (const draggedConn of draggedConnectors) {
-              if (draggedConn.diameter === otherConn.diameter) {
-                const dist = Math.hypot(draggedConn.x - otherConn.x, draggedConn.y - otherConn.y);
-                if (dist < bestSnap.dist) {
-                  bestSnap = { dist, dx: otherConn.x - draggedConn.x, dy: otherConn.y - draggedConn.y };
-                }
+    if (interactionMode === 'pinch') {
+        if (activePointers.current.size < 2) {
+            setInteractionMode('idle');
+        }
+        return;
+    }
+
+    if (interactionMode === 'drag' && dragInfo.current.target && dragInfo.current.hasDragged) {
+      const { group } = dragInfo.current;
+      const draggedGroupId = dragInfo.current.target.groupId;
+
+      let bestSnap = { dist: CONNECT_DISTANCE / camera.zoom, dx: 0, dy: 0, otherGroupId: -1 };
+
+      // Check for snaps from the final dragged position
+      for (const item of group) {
+          const draggedObj = objects.find(o => o.id === item.obj.id)!;
+          for (const tc of draggedObj.getConnectors()) {
+              for (const otherObject of objects) {
+                  if (otherObject.groupId !== draggedGroupId) {
+                      for (const c of otherObject.getConnectors()) {
+                          if (tc.diameter === c.diameter) {
+                              const dist = Math.hypot(tc.x - c.x, tc.y - c.y);
+                              if (dist < bestSnap.dist) {
+                                  bestSnap = { dist, dx: c.x - tc.x, dy: c.y - tc.y, otherGroupId: otherObject.groupId };
+                              }
+                          }
+                      }
+                  }
               }
-            }
           }
-        }
-        if (bestSnap.dist < CONNECT_DISTANCE) {
+      }
+
+      let connectionMade = false;
+      if (bestSnap.otherGroupId !== -1) {
+          // A snap was found, apply final snap translation to the entire group
           group.forEach(item => {
-              updateObjectPosition(item.obj.id, item.initialX + total_dx + bestSnap.dx, item.initialY + total_dy + bestSnap.dy);
+              const objToUpdate = objects.find(o => o.id === item.obj.id)!;
+              updateObjectPosition(objToUpdate.id, objToUpdate.x + bestSnap.dx, objToUpdate.y + bestSnap.dy);
           });
-        }
+          mergeGroups(draggedGroupId, bestSnap.otherGroupId);
+          connectionMade = true;
       }
       
-      recalculateGroups();
-      saveHistory();
+      if (dragInfo.current.hasDragged || connectionMade) {
+          saveHistory();
+      }
     }
 
     setInteractionMode('idle');
@@ -357,7 +439,8 @@ const CanvasArea = () => {
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
+        onPointerLeave={handlePointerUp} // Use same handler for leave
+        onPointerCancel={handlePointerUp} // And for cancel
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         style={{ cursor: 'grab', touchAction: 'none', width: '100%', height: '100%' }}
@@ -374,8 +457,7 @@ const CanvasArea = () => {
             dimension={editingDimension}
             onCancel={() => setEditingDimension(null)}
             onApply={(newLength) => {
-                console.log("Applying new length:", newLength);
-                addDimension(editingDimension.p1, editingDimension.p2); // 仮で追加
+                applyDimensionAdjustment(editingDimension.p1, editingDimension.p2, newLength);
                 setEditingDimension(null);
             }}
         />

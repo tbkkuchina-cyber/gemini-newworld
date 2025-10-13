@@ -82,15 +82,15 @@ export class DuctPart {
 
     get color(): string { return getColorForDiameter(this.diameter); }
 
-    draw(ctx: CanvasRenderingContext2D, camera: { zoom: number }): void { /* Base class does not draw */ }
+    draw(_ctx: CanvasRenderingContext2D, _camera: { zoom: number }): void { /* Base class does not draw */ }
     
-    drawCenterline(ctx: CanvasRenderingContext2D, camera: { zoom: number }): void { /* Base class does not draw */ }
+    drawCenterline(_ctx: CanvasRenderingContext2D, _camera: { zoom: number }): void { /* Base class does not draw */ }
 
     getConnectors(): { id: number; x: number; y: number; angle: number; diameter: number }[] { return []; }
     
     getIntersectionPoints(): { id: string; x: number; y: number }[] { return []; }
 
-    isPointInside(px: number, py: number): boolean { return false; }
+    isPointInside(_px: number, _py: number): boolean { return false; }
 
     rotate(): void { this.rotation = (this.rotation + 45) % 360; }
 
@@ -145,12 +145,27 @@ export class StraightDuct extends DuctPart {
         const textMetrics = ctx.measureText(text);
         const angle = (this.rotation % 360 + 360) % 360;
         const isUpsideDown = angle > 90 && angle < 270;
+        
         ctx.save();
         if (isUpsideDown) ctx.rotate(Math.PI);
-        if (textMetrics.width > w - 20) {
+
+        if (textMetrics.width > w - (20 / camera.zoom)) {
+            // Draw with leader line if text is too wide for the duct
+            ctx.beginPath();
+            ctx.moveTo(0, 0); // Start line from center
+            const leaderX1 = 60 / camera.zoom;
+            const leaderY1 = (h / 2) + (60 / camera.zoom);
+            ctx.lineTo(leaderX1, leaderY1); // End line diagonally down-right
+            ctx.lineTo(leaderX1 + textMetrics.width + (10 / camera.zoom), leaderY1); // Horizontal part
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 1 / camera.zoom;
+            ctx.stroke();
+
             ctx.textAlign = 'left';
-            ctx.fillText(text, 70 / camera.zoom, (h/2 + 70) / camera.zoom);
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, leaderX1 + (5 / camera.zoom), leaderY1);
         } else {
+            // Draw text inside the duct
             ctx.fillText(text, 0, 0);
         }
         ctx.restore();
