@@ -12,6 +12,19 @@ const SNAP_DISTANCE = 20;
 const DimensionModal = ({ dimension, onApply, onCancel }: { dimension: {p1: Point, p2: Point}, onApply: (newLength: number) => void, onCancel: () => void }) => {
     const initialValue = Math.hypot(dimension.p2.x - dimension.p1.x, dimension.p2.y - dimension.p1.y);
     const [value, setValue] = useState(initialValue.toFixed(1));
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        // モーダルが表示されたとき (dimensionがnullでないとき) に実行
+        if (dimension && inputRef.current) {
+            // DOMが完全にレンダリングされるのを待つために短い遅延を入れる
+            const timer = setTimeout(() => {
+                inputRef.current?.focus();
+                inputRef.current?.select();
+            }, 50); // 50msの遅延
+            return () => clearTimeout(timer);
+        }
+    }, [dimension]); // dimensionオブジェクトの変更を監視
 
     const handleApply = () => {
         const newLength = parseFloat(value);
@@ -25,11 +38,12 @@ const DimensionModal = ({ dimension, onApply, onCancel }: { dimension: {p1: Poin
             <div className="bg-white rounded-lg shadow-xl p-6 space-y-4">
                 <h3 className="text-lg font-bold">寸法を入力</h3>
                 <input 
+                    ref={inputRef}
                     type="number"
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
                     className="w-full p-2 border rounded-md"
-                    autoFocus
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleApply(); }}
                 />
                 <div className="flex justify-end space-x-2">
                     <button onClick={onCancel} className="px-4 py-2 rounded-md bg-gray-200 hover:bg-gray-300">キャンセル</button>
@@ -75,6 +89,7 @@ const CanvasArea = () => {
   const panStart = useRef({ x: 0, y: 0 });
   const pinchState = useRef({ initialDist: 0 });
   const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const lastWorldMousePos = useRef({ x: 0, y: 0 });
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -103,7 +118,7 @@ const CanvasArea = () => {
 
   const findSnapPoint = (worldPos: Point): SnapPoint | null => {
     const snapDistSq = (SNAP_DISTANCE / camera.zoom) ** 2;
-    let closestSnap: { point: SnapPoint, distSq: number } | null = null;
+    const candidates: { point: SnapPoint, distSq: number, object: DuctPart }[] = [];
 
     for (const obj of objects) {
         const points: SnapPoint[] = [
@@ -113,12 +128,35 @@ const CanvasArea = () => {
 
         for (const p of points) {
             const distSq = (worldPos.x - p.x)**2 + (worldPos.y - p.y)**2;
-            if (distSq < snapDistSq && (!closestSnap || distSq < closestSnap.distSq)) {
-                closestSnap = { point: p, distSq };
+            if (distSq < snapDistSq) {
+                 candidates.push({
+                    distSq: distSq,
+                    point: p,
+                    object: obj,
+                });
             }
         }
     }
-    return closestSnap ? closestSnap.point : null;
+
+    if (candidates.length === 0) return null;
+
+    // Sort candidates by distance
+    candidates.sort((a, b) => a.distSq - b.distSq);
+    
+    const closestDistSq = candidates[0].distSq;
+
+    // Filter for all candidates that are equally close (within a small tolerance)
+    const closestCandidates = candidates.filter(c => c.distSq <= closestDistSq + 0.01);
+
+    // From the closest candidates, prefer a fitting over a straight duct
+    let bestCandidate = closestCandidates.find(c => c.object.type !== 'StraightDuct');
+    
+    // If no fitting is among the closest, just take the first one (which could be a straight duct)
+    if (!bestCandidate) {
+        bestCandidate = closestCandidates[0];
+    }
+    
+    return bestCandidate.point;
   };
 
   useEffect(() => {
@@ -179,53 +217,22 @@ const CanvasArea = () => {
             ctx.arc(currentSnapPoint.x, currentSnapPoint.y, 12 / camera.zoom, 0, 2 * Math.PI);
             ctx.stroke();
         }
-        if (measureStartPoint && currentSnapPoint) {
-            ctx.beginPath(); ctx.moveTo(measureStartPoint.x, measureStartPoint.y); ctx.lineTo(currentSnapPoint.x, currentSnapPoint.y); ctx.strokeStyle = '#db2777'; ctx.stroke();
+        if (measureStartPoint) {
+            const p1 = measureStartPoint;
+            const p2 = currentSnapPoint || lastWorldMousePos.current;
+            if (p1 && p2) {
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y);
+                ctx.strokeStyle = '#db2777';
+                ctx.lineWidth = 2 / camera.zoom;
+                ctx.stroke();
+            }
         }
       }
 
       dimensions.forEach(dim => {
-        const color = dim.isStraightRun ? 'rgba(239, 68, 68, 0.9)' : '#0284c7';
-        ctx.strokeStyle = color;
-        ctx.fillStyle = color;
-        ctx.lineWidth = 1.5 / camera.zoom;
-        ctx.font = `${16 / camera.zoom}px sans-serif`;
-        ctx.textAlign = 'center';
-
-        const { p1, p2, value } = dim;
-        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-
-        const perpAngle = angle - Math.PI / 2;
-        const offsetDist = 60 / camera.zoom;
-        const perpDx = Math.cos(perpAngle);
-        const perpDy = Math.sin(perpAngle);
-        const p1_ext = { x: p1.x + offsetDist * perpDx, y: p1.y + offsetDist * perpDy };
-        const p2_ext = { x: p2.x + offsetDist * perpDx, y: p2.y + offsetDist * perpDy };
-        ctx.globalAlpha = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p1_ext.x, p1_ext.y);
-        ctx.moveTo(p2.x, p2.y);
-        ctx.lineTo(p2_ext.x, p2_ext.y);
-        ctx.stroke();
-        ctx.globalAlpha = 1.0;
-
-        ctx.beginPath();
-        ctx.moveTo(p1_ext.x, p1_ext.y);
-        ctx.lineTo(p2_ext.x, p2_ext.y);
-        ctx.stroke();
-
-        const midX = (p1_ext.x + p2_ext.x) / 2;
-        const midY = (p1_ext.y + p2_ext.y) / 2;
-        ctx.save();
-        ctx.translate(midX, midY);
-        ctx.rotate(angle);
-        if (angle > Math.PI / 2 || angle < -Math.PI / 2) ctx.rotate(Math.PI);
-        ctx.fillStyle = 'white';
-        ctx.fillRect(-25 / camera.zoom, -12 / camera.zoom, 50 / camera.zoom, 24 / camera.zoom);
-        ctx.fillStyle = color;
-        ctx.fillText(value.toFixed(0), 0, 6 / camera.zoom);
-        ctx.restore();
+        dim.draw(ctx, camera, objects);
       });
 
       ctx.restore();
@@ -323,6 +330,9 @@ const CanvasArea = () => {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const worldPos = getWorldMousePos(e.clientX, e.clientY);
+    lastWorldMousePos.current = worldPos;
+
     if (activePointers.current.has(e.pointerId)) {
         activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     }
@@ -333,14 +343,12 @@ const CanvasArea = () => {
         const delta = pinchState.current.initialDist - newDist;
 
         const midpoint = { x: (pointers[0].x + pointers[1].x) / 2, y: (pointers[0].y + pointers[1].y) / 2 };
-        const worldMousePos = getWorldMousePos(midpoint.x, midpoint.y);
+        const worldMousePosForZoom = getWorldMousePos(midpoint.x, midpoint.y);
 
-        zoomCamera(delta * 2, worldMousePos); // Multiply delta for more sensitivity
+        zoomCamera(delta * 2, worldMousePosForZoom); // Multiply delta for more sensitivity
         pinchState.current.initialDist = newDist;
         return;
     }
-
-    const worldPos = getWorldMousePos(e.clientX, e.clientY);
 
     if (mode === 'measure') {
         setCurrentSnapPoint(findSnapPoint(worldPos));

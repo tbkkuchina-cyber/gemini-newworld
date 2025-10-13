@@ -16,9 +16,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "簡易ダクト設計アプリ",
   description: "A simple duct design application",
-  icons: {
-    icon: "/favicon.svg",
-  },
 };
 
 export default function RootLayout({

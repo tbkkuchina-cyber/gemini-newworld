@@ -13,7 +13,7 @@ import {
     DimensionLine,
     Point
 } from '@/lib/objects';
-import { AppState, AppActions, DuctPartOptions, DuctPartType } from '@/lib/types';
+import { AppState, AppActions, DuctPartOptions, DuctPartType, SnapPoint } from '@/lib/types';
 import { fittingsMaster } from './fittingsMaster';
 
 // Helper function translated from duct-app-script.js
@@ -223,7 +223,14 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
 
     addDimension: (p1, p2) => {
         set(state => {
-            const newDim = new DimensionLine(p1, p2);
+            const newDim = new DimensionLine({
+                p1_objectId: p1.objectId,
+                p1_pointId: p1.id,
+                p1_pointType: p1.type,
+                p2_objectId: p2.objectId,
+                p2_pointId: p2.id,
+                p2_pointType: p2.type,
+            });
             state.dimensions.push(newDim);
         });
         get().saveHistory();
@@ -277,7 +284,7 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
                 if (componentIds.length < 2) continue;
 
                 const componentObjects = componentIds.map(id => straightDucts.find(d => d.id === id)!);
-                const endPoints: Point[] = [];
+                const endPoints: SnapPoint[] = [];
 
                 for (const ductInComponent of componentObjects) {
                     for (const connector of ductInComponent.getConnectors()) {
@@ -293,9 +300,9 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
                             );
                             if (connectedFitting) {
                                 const fittingConnector = connectedFitting.getConnectors().find(c => Math.hypot(c.x - connector.x, c.y - connector.y) < CONNECTION_TOLERANCE)!;
-                                endPoints.push({ x: fittingConnector.x, y: fittingConnector.y });
+                                endPoints.push({ x: fittingConnector.x, y: fittingConnector.y, objectId: connectedFitting.id, id: fittingConnector.id, type: 'connector' });
                             } else {
-                                endPoints.push({ x: connector.x, y: connector.y });
+                                endPoints.push({ x: connector.x, y: connector.y, objectId: ductInComponent.id, id: connector.id, type: 'connector' });
                             }
                         }
                     }
@@ -303,7 +310,13 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
                 
                 if (endPoints.length === 2) {
                     const [p1, p2] = endPoints;
-                    const newDim = new DimensionLine(p1, p2, {
+                    const newDim = new DimensionLine({
+                        p1_objectId: p1.objectId,
+                        p1_pointId: p1.id,
+                        p1_pointType: p1.type,
+                        p2_objectId: p2.objectId,
+                        p2_pointId: p2.id,
+                        p2_pointType: p2.type,
                         isStraightRun: true,
                         id: `run-${componentIds.sort().join('-')}`
                     });
@@ -449,8 +462,17 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
             }
 
             // Add or update the dimension line
-            const newDim = new DimensionLine(p1_info, p2_info, { value: totalDistance });
             const dimKey = `${[p1_info.objectId, p2_info.objectId].sort().join('-')}`;
+            const newDim = new DimensionLine({
+                p1_objectId: p1_info.objectId,
+                p1_pointId: p1_info.id,
+                p1_pointType: p1_info.type,
+                p2_objectId: p2_info.objectId,
+                p2_pointId: p2_info.id,
+                p2_pointType: p2_info.type,
+                value: totalDistance,
+                id: dimKey
+            });
             const existingDimIndex = state.dimensions.findIndex(d => d.id === dimKey);
             if (existingDimIndex > -1) {
                 state.dimensions[existingDimIndex] = newDim;
@@ -460,6 +482,7 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
             }
         });
         get().saveHistory();
+        get().setMode('pan'); // Exit measure mode after applying dimension
     },
 
     togglePalette: () => {
@@ -502,7 +525,7 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
                 state.historyIndex--;
                 const previousState = state.history[state.historyIndex];
                 state.objects = previousState.objects.map(obj => obj.clone());
-                state.dimensions = previousState.dimensions.map(d => new DimensionLine(d.p1, d.p2, d));
+                state.dimensions = previousState.dimensions.map(d => new DimensionLine(d)); // Re-instantiate with new constructor
                 state.selectedObjectId = null;
             }
         });
@@ -514,7 +537,7 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
                 state.historyIndex++;
                 const nextState = state.history[state.historyIndex];
                 state.objects = nextState.objects.map(obj => obj.clone());
-                state.dimensions = nextState.dimensions.map(d => new DimensionLine(d.p1, d.p2, d));
+                state.dimensions = nextState.dimensions.map(d => new DimensionLine(d)); // Re-instantiate with new constructor
                 state.selectedObjectId = null;
             }
         });

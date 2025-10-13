@@ -32,20 +32,39 @@ export interface Point {
 
 export class DimensionLine {
     id: string;
-    p1: Point;
-    p2: Point;
-    value: number;
     isStraightRun: boolean;
+    value: number;
 
-    constructor(p1: Point, p2: Point, options: Partial<DimensionLine> = {}) {
+    p1_objectId: number;
+    p1_pointId: string | number;
+    p1_pointType: 'connector' | 'intersection';
+
+    p2_objectId: number;
+    p2_pointId: string | number;
+    p2_pointType: 'connector' | 'intersection';
+
+    constructor(options: Partial<DimensionLine> & { 
+        p1_objectId: number; p1_pointId: string | number; p1_pointType: 'connector' | 'intersection';
+        p2_objectId: number; p2_pointId: string | number; p2_pointType: 'connector' | 'intersection';
+    }) {
         this.id = options.id || `dim-${Date.now()}`;
-        this.p1 = p1;
-        this.p2 = p2;
-        this.value = Math.hypot(p2.x - p1.x, p2.y - p1.y);
         this.isStraightRun = options.isStraightRun || false;
+        this.value = options.value || 0;
+
+        this.p1_objectId = options.p1_objectId;
+        this.p1_pointId = options.p1_pointId;
+        this.p1_pointType = options.p1_pointType;
+
+        this.p2_objectId = options.p2_objectId;
+        this.p2_pointId = options.p2_pointId;
+        this.p2_pointType = options.p2_pointType;
     }
 
-    draw(ctx: CanvasRenderingContext2D, camera: { zoom: number }) {
+    draw(ctx: CanvasRenderingContext2D, camera: { zoom: number }, objects: DuctPart[]): void {
+        const p1 = getPointForDim(objects, this.p1_objectId, this.p1_pointType, this.p1_pointId);
+        const p2 = getPointForDim(objects, this.p2_objectId, this.p2_pointType, this.p2_pointId);
+        if (!p1 || !p2) return;
+
         const color = this.isStraightRun ? 'rgba(239, 68, 68, 0.9)' : '#0284c7';
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
@@ -53,7 +72,50 @@ export class DimensionLine {
         ctx.font = `${16 / camera.zoom}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
+
+        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+
+        const perpAngle = angle - Math.PI / 2;
+        const offsetDist = 60 / camera.zoom;
+        const perpDx = Math.cos(perpAngle);
+        const perpDy = Math.sin(perpAngle);
+        const p1_ext = { x: p1.x + offsetDist * perpDx, y: p1.y + offsetDist * perpDy };
+        const p2_ext = { x: p2.x + offsetDist * perpDx, y: p2.y + offsetDist * perpDy };
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p1_ext.x, p1_ext.y);
+        ctx.moveTo(p2.x, p2.y);
+        ctx.lineTo(p2_ext.x, p2_ext.y);
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+
+        ctx.beginPath();
+        ctx.moveTo(p1_ext.x, p1_ext.y);
+        ctx.lineTo(p2_ext.x, p2_ext.y);
+        ctx.stroke();
+
+        const midX = (p1_ext.x + p2_ext.x) / 2;
+        const midY = (p1_ext.y + p2_ext.y) / 2;
+        ctx.save();
+        ctx.translate(midX, midY);
+        ctx.rotate(angle);
+        if (angle > Math.PI / 2 || angle < -Math.PI / 2) ctx.rotate(Math.PI);
+        ctx.fillStyle = 'white';
+        ctx.fillRect(-25 / camera.zoom, -12 / camera.zoom, 50 / camera.zoom, 24 / camera.zoom);
+        ctx.fillStyle = color;
+        ctx.fillText(this.value.toFixed(0), 0, 6 / camera.zoom);
+        ctx.restore();
     }
+}
+
+// Helper function to get point coordinates from object and point IDs
+export function getPointForDim(objects: DuctPart[], objectId: number, pointType: 'connector' | 'intersection', pointId: string | number): Point | null {
+    const obj = objects.find(o => o.id === objectId);
+    if (!obj) return null;
+    const points = pointType === 'connector' ? obj.getConnectors() : obj.getIntersectionPoints();
+    const point = points.find(p => p.id === pointId);
+    return point ? { x: point.x, y: point.y } : null;
 }
 
 export class DuctPart {
