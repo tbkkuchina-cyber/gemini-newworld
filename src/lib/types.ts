@@ -1,5 +1,4 @@
 import { DuctPart, DimensionLine } from './objects';
-import { FittingsData } from './fittingsMaster';
 
 // すべてのダクト部品の型を網羅
 export type DuctPartType = 
@@ -17,6 +16,17 @@ export interface Camera {
   x: number;
   y: number;
   zoom: number;
+}
+
+// ★ スナップポイントの型定義
+export interface Point {
+    x: number;
+    y: number;
+}
+export interface SnapPoint extends Point {
+    id: string | number;
+    type: 'connector' | 'intersection';
+    objectId: number;
 }
 
 // ダクト部品のオプション（全クラスのプロパティを網羅）
@@ -52,6 +62,8 @@ export interface Fitting extends Omit<PaletteItemData, 'name'> {
     name: string;
     visible: boolean;
 }
+export type FittingsData = Record<string, Fitting[]>; // ★ exportを追加
+
 
 // 履歴に保存する状態の型
 export interface HistoryState {
@@ -90,7 +102,7 @@ export interface AppActions {
   disconnectObject: (id: number) => void;
 
   // 寸法線操作
-  addDimension: (p1: any, p2: any) => void; // ★ とりあえずanyで定義
+  addDimension: (p1: SnapPoint, p2: SnapPoint) => void;
   updateStraightRunDimensions: () => void;
 
   // カメラ操作

@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { useAppStore } from '@/lib/store';
 import { DuctPartOptions, FittingsData, Fitting } from '@/lib/types';
 
-// プロパティ名を日本語に変換するヘルパー
 const propertyNameMap: Partial<Record<keyof DuctPartOptions, string>> = {
     diameter: '直径',
     diameter2: '直径2',
@@ -16,7 +15,6 @@ const propertyNameMap: Partial<Record<keyof DuctPartOptions, string>> = {
     intersectionOffset: '交差オフセット',
 };
 
-// 継手のプロパティに基づいて名前を生成するヘルパー関数
 const generateFittingName = (fitting: Fitting): string => {
     const { type, defaultOptions } = fitting;
     const { diameter, diameter2, diameter3, angle } = defaultOptions;
@@ -25,7 +23,6 @@ const generateFittingName = (fitting: Fitting): string => {
         case 'Elbow90':
             return `D${diameter}`;
         case 'AdjustableElbow':
-            // ★ 名前の表示ルールのみ、慣習に合わせて変換
             const bendAngle = (angle && angle > 90) ? 180 - angle : angle;
             return `D${diameter} ${bendAngle}°`;
         case 'TeeReducer':
@@ -70,17 +67,15 @@ const FittingsModal = () => {
             if (!prev) return null;
             const newState = JSON.parse(JSON.stringify(prev));
             for (const category in newState) {
-                const fitting = newState[category].find(f => f.id === fittingId);
+                const fitting = newState[category].find((f: Fitting) => f.id === fittingId);
                 if (fitting && property in fitting.defaultOptions) {
-                    // @ts-ignore
                     fitting.defaultOptions[property] = value;
 
-                    // ★ 直径変更時の脚長自動更新ルールを修正
-                    if (property === 'diameter') {
-                        if (fitting.type === 'Elbow90') {
-                            fitting.defaultOptions.legLength = value; // 90°エルボは直径と脚長が1:1
-                        } else if (fitting.type === 'AdjustableElbow') {
-                            fitting.defaultOptions.legLength = value * 0.4; // 可変角度エルボは直径 x 0.4
+                    if ((fitting.type === 'Elbow90' || fitting.type === 'AdjustableElbow') && property === 'diameter') {
+                        if (fitting.type === 'AdjustableElbow' && fitting.defaultOptions.angle === 45) {
+                            fitting.defaultOptions.legLength = value * 0.4;
+                        } else {
+                            fitting.defaultOptions.legLength = value;
                         }
                     }
                     
@@ -116,7 +111,7 @@ const FittingsModal = () => {
             if (!prev) return null;
             const newState = JSON.parse(JSON.stringify(prev));
             for (const category in newState) {
-                const index = newState[category].findIndex(f => f.id === fittingId);
+                const index = newState[category].findIndex((f: Fitting) => f.id === fittingId);
                 if (index !== -1) {
                     newState[category].splice(index, 1);
                     return newState;
@@ -131,7 +126,7 @@ const FittingsModal = () => {
             if (!prev) return null;
             const newState = JSON.parse(JSON.stringify(prev));
             for (const category in newState) {
-                const fitting = newState[category].find(f => f.id === fittingId);
+                const fitting = newState[category].find((f: Fitting) => f.id === fittingId);
                 if (fitting) {
                     fitting.visible = visible;
                     return newState;

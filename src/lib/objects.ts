@@ -8,11 +8,10 @@ const DIAMETER_COLORS: { [key: number]: string } = {
     175: '#fca5a5',   // red-300
     200: '#d8b4fe',   // purple-300
     250: '#fdba74',   // orange-300
-    default: '#60a5fa', // blue-400
 };
 
 function getColorForDiameter(diameter: number): string {
-    return DIAMETER_COLORS[diameter] || DIAMETER_COLORS.default;
+    return DIAMETER_COLORS[diameter] || '#60a5fa'; // blue-400
 }
 
 // =================================================================================
@@ -247,7 +246,6 @@ export class Elbow90 extends DuctPart {
         ctx.textAlign = 'center';
         const text = `D${this.diameter} L:${this.legLength}`;
 
-        // ★ 水平な脚のテキスト
         const angle1 = (this.rotation % 360 + 360) % 360;
         const isUpsideDown1 = angle1 > 90 && angle1 < 270;
         ctx.save();
@@ -256,7 +254,6 @@ export class Elbow90 extends DuctPart {
         ctx.fillText(text, this.legLength / 2, (isUpsideDown1 ? 1 : -1) * (this.diameter / 2 + 5 / camera.zoom));
         ctx.restore();
         
-        // ★ 垂直な脚のテキスト
         const angle2 = ((this.rotation + 270) % 360 + 360) % 360;
         const isUpsideDown2 = angle2 > 90 && angle2 < 270;
         ctx.save();
@@ -789,9 +786,7 @@ export class YBranch extends DuctPart {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.rotation * Math.PI / 180);
-        ctx.setLineDash([]);
-
-        const branchDiameter = (this as YBranchReducer).diameter3 || this.diameter;
+        const branchDiameter = ('diameter3' in this && (this as unknown as YBranchReducer).diameter3) || this.diameter;
         const branchColor = getColorForDiameter(branchDiameter);
         
         ctx.strokeStyle = '#1e293b';
@@ -820,11 +815,9 @@ export class YBranch extends DuctPart {
         }
         this.drawCenterline(ctx, camera);
 
-        // ★ 寸法ラベル描画
         ctx.fillStyle = '#1e293b';
         ctx.font = `${16 / camera.zoom}px sans-serif`;
-        ctx.textAlign = 'center';
-        const mainOutletDiameter = (this as YBranchReducer).diameter2 || this.diameter;
+        const mainOutletDiameter = ('diameter2' in this && (this as unknown as YBranchReducer).diameter2) || this.diameter;
         const mainAngle = (this.rotation % 360 + 360) % 360;
         const mainIsUpsideDown = mainAngle > 90 && mainAngle < 270;
         ctx.save();
@@ -895,8 +888,8 @@ export class YBranch extends DuctPart {
             y: this.y + p.x * sin_rad + p.y * cos_rad
         });
 
-        const mainOutletDiameter = (this as YBranchReducer).diameter2 || this.diameter;
-        const branchOutletDiameter = (this as YBranchReducer).diameter3 || this.diameter;
+        const mainOutletDiameter = ('diameter2' in this && (this as unknown as YBranchReducer).diameter2) || this.diameter;
+        const branchOutletDiameter = ('diameter3' in this && (this as unknown as YBranchReducer).diameter3) || this.diameter;
 
         return [
             { id: 0, ...rotate(c1_local), angle: (this.rotation + 180) % 360, diameter: this.diameter },
@@ -933,7 +926,7 @@ export class YBranch extends DuctPart {
         const branchLocalX = relX * branchCos + relY * branchSin;
         const branchLocalY = -relX * branchSin + relY * branchCos;
         
-        const branchDiameter = (this as YBranchReducer).diameter3 || this.diameter;
+        const branchDiameter = ('diameter3' in this && (this as unknown as YBranchReducer).diameter3) || this.diameter;
 
         const inBranch = (branchLocalX >= 0 && branchLocalX <= this.branchLength &&
                           branchLocalY >= -branchDiameter / 2 && branchLocalY <= branchDiameter / 2);

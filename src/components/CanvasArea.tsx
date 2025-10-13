@@ -3,24 +3,12 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useAppStore } from '@/lib/store';
 import { DuctPart, DimensionLine } from '@/lib/objects';
-import { PaletteItemData } from '@/lib/types';
+import { PaletteItemData, SnapPoint, Point } from '@/lib/types';
 import ContextMenu from '@/components/ContextMenu';
 
 const CONNECT_DISTANCE = 50;
 const SNAP_DISTANCE = 20;
 
-interface Point {
-  x: number;
-  y: number;
-}
-
-interface SnapPoint extends Point {
-    id: string | number;
-    type: 'connector' | 'intersection';
-    objectId: number;
-}
-
-// ★ 寸法入力モーダルコンポーネント
 const DimensionModal = ({ dimension, onApply, onCancel }: { dimension: {p1: Point, p2: Point}, onApply: (newLength: number) => void, onCancel: () => void }) => {
     const initialValue = Math.hypot(dimension.p2.x - dimension.p1.x, dimension.p2.y - dimension.p1.y);
     const [value, setValue] = useState(initialValue.toFixed(1));
@@ -111,7 +99,7 @@ const CanvasArea = () => {
     let closestSnap: { point: SnapPoint, distSq: number } | null = null;
 
     for (const obj of objects) {
-        const points = [
+        const points: SnapPoint[] = [
             ...obj.getConnectors().map(p => ({ ...p, type: 'connector' as const, objectId: obj.id })),
             ...obj.getIntersectionPoints().map(p => ({ ...p, type: 'intersection' as const, objectId: obj.id }))
         ];
@@ -189,7 +177,49 @@ const CanvasArea = () => {
         }
       }
 
-      dimensions.forEach(dim => { /* ... */ });
+      dimensions.forEach(dim => {
+        const color = dim.isStraightRun ? 'rgba(239, 68, 68, 0.9)' : '#0284c7';
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = 1.5 / camera.zoom;
+        ctx.font = `${16 / camera.zoom}px sans-serif`;
+        ctx.textAlign = 'center';
+
+        const { p1, p2, value } = dim;
+        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+
+        const perpAngle = angle - Math.PI / 2;
+        const offsetDist = 60 / camera.zoom;
+        const perpDx = Math.cos(perpAngle);
+        const perpDy = Math.sin(perpAngle);
+        const p1_ext = { x: p1.x + offsetDist * perpDx, y: p1.y + offsetDist * perpDy };
+        const p2_ext = { x: p2.x + offsetDist * perpDx, y: p2.y + offsetDist * perpDy };
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p1_ext.x, p1_ext.y);
+        ctx.moveTo(p2.x, p2.y);
+        ctx.lineTo(p2_ext.x, p2_ext.y);
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+
+        ctx.beginPath();
+        ctx.moveTo(p1_ext.x, p1_ext.y);
+        ctx.lineTo(p2_ext.x, p2_ext.y);
+        ctx.stroke();
+
+        const midX = (p1_ext.x + p2_ext.x) / 2;
+        const midY = (p1_ext.y + p2_ext.y) / 2;
+        ctx.save();
+        ctx.translate(midX, midY);
+        ctx.rotate(angle);
+        if (angle > Math.PI / 2 || angle < -Math.PI / 2) ctx.rotate(Math.PI);
+        ctx.fillStyle = 'white';
+        ctx.fillRect(-25 / camera.zoom, -12 / camera.zoom, 50 / camera.zoom, 24 / camera.zoom);
+        ctx.fillStyle = color;
+        ctx.fillText(value.toFixed(0), 0, 6 / camera.zoom);
+        ctx.restore();
+      });
 
       ctx.restore();
 
@@ -345,7 +375,6 @@ const CanvasArea = () => {
             onCancel={() => setEditingDimension(null)}
             onApply={(newLength) => {
                 console.log("Applying new length:", newLength);
-                // TODO: Call applyDimensionAdjustment action
                 addDimension(editingDimension.p1, editingDimension.p2); // 仮で追加
                 setEditingDimension(null);
             }}
