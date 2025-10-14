@@ -41,7 +41,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, onClose }) => {
   return (
     <div 
       className="absolute bg-white shadow-lg rounded-md p-1 flex items-center space-x-1 z-20" 
-      style={{ left: x, top: y }}
+      style={{ left: x, top: y, transform: 'translateX(-50%)' }}
     >
       {/* 回転ボタン */}
       <button onClick={() => handleAction(rotateSelectedObject)} title="回転" className="p-2 rounded-md hover:bg-gray-200">

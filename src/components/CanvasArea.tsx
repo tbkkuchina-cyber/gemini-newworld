@@ -241,7 +241,9 @@ const CanvasArea = () => {
         const selectedObject = objects.find(o => o.id === selectedObjectId);
         if (selectedObject) {
           const { x, y } = worldToScreen(selectedObject.x, selectedObject.y);
-          setContextMenu({ x: x + 50, y: y });
+          // Position the menu above the object, horizontally centered.
+          const menuY = y - 50 - (selectedObject.diameter / 2) * camera.zoom;
+          setContextMenu({ x: x, y: menuY });
         }
       } else {
         setContextMenu(null);
