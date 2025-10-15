@@ -56,6 +56,7 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
     fittings: fittingsMaster,
     isFittingsModalOpen: false,
     errorModal: { isOpen: false, title: '', message: '' },
+    screenshotTrigger: 0,
 
     addObject: (partType: DuctPartType, options: DuctPartOptions) => {
         const { nextId, saveHistory, recalculateGroups } = get();
@@ -514,6 +515,12 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
 
     hideErrorModal: () => {
         set({ errorModal: { isOpen: false, title: '', message: '' } });
+    },
+
+    triggerScreenshot: () => {
+        set(state => {
+            state.screenshotTrigger++;
+        });
     },
 
     saveHistory: () => {

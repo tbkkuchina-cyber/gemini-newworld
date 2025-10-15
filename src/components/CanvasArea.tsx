@@ -75,6 +75,7 @@ const CanvasArea = () => {
     deleteObject,
     undo,
     redo,
+    screenshotTrigger,
   } = useAppStore();
 
   const [interactionMode, setInteractionMode] = useState<'idle' | 'pan' | 'drag' | 'pinch'>('idle');
@@ -350,6 +351,35 @@ const CanvasArea = () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [selectedObjectId, undo, redo, rotateSelectedObject, deleteObject]);
+
+  useEffect(() => {
+    // Do not run on initial render
+    if (screenshotTrigger === 0) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const originalSelectedId = selectedObjectId;
+    
+    // Temporarily deselect object for a clean screenshot
+    if (originalSelectedId !== null) {
+      selectObject(null);
+    }
+
+    // Allow state to update and canvas to re-render before taking the shot
+    setTimeout(() => {
+      const link = document.createElement('a');
+      link.download = `duct-design-${new Date().toISOString().slice(0,19).replace('T','_').replace(/:/g,'-')}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+
+      // Restore selection if there was one
+      if (originalSelectedId !== null) {
+        selectObject(originalSelectedId);
+      }
+    }, 100); // 100ms delay is a pragmatic way to wait for re-render
+
+  }, [screenshotTrigger]); // Dependency array only needs the trigger
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });

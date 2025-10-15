@@ -6,7 +6,8 @@ import { useAppStore } from '@/lib/store';
 const Toolbar = () => {
   const { 
     undo, redo, history, historyIndex, mode, setMode, 
-    zoomIn, zoomOut, resetView, clearCanvas, togglePalette
+    zoomIn, zoomOut, resetView, clearCanvas, togglePalette,
+    triggerScreenshot
   } = useAppStore();
 
   const canUndo = historyIndex > 0;
@@ -20,9 +21,7 @@ const Toolbar = () => {
   const handlePrint = () => window.print();
 
   const handleScreenshot = () => {
-    // This logic is better implemented in CanvasArea where the canvas ref exists.
-    // We can trigger it via a global event or a state flag.
-    alert('スクリーンショット機能はCanvasAreaコンポーネントから実装する必要があります。');
+    triggerScreenshot();
   };
   
   const handleShare = async () => {

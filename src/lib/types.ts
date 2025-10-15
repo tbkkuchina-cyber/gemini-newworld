@@ -94,6 +94,7 @@ export interface AppState {
   fittings: FittingsData;
   isFittingsModalOpen: boolean;
   errorModal: ErrorModalState;
+  screenshotTrigger: number;
 }
 
 // ZustandストアのActions（操作）の型定義
@@ -123,6 +124,7 @@ export interface AppActions {
 
   // キャンバス操作
   clearCanvas: () => void;
+  triggerScreenshot: () => void;
   
   // UI操作
   togglePalette: () => void;
