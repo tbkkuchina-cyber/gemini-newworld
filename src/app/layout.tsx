@@ -11,7 +11,6 @@ const inter = Inter({ subsets: ["latin"] }); // Interフォントを設定
 export const metadata: Metadata = {
   title: "簡易ダクト設計アプリ",
   description: "A simple duct design application",
-  manifest: "/manifest.json", // manifest.jsonへのリンクはここに残します
 };
 
 export default function RootLayout({
@@ -35,7 +34,7 @@ export default function RootLayout({
             __html: `
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('/sw.js').then(registration => {
+                  navigator.serviceWorker.register('./sw.js').then(registration => {
                     console.log('SW registered: ', registration.scope);
                   }).catch(registrationError => {
                     console.log('SW registration failed: ', registrationError);
