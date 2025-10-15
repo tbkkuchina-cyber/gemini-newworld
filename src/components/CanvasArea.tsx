@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useAppStore } from '@/lib/store';
-import { DuctPart } from '@/lib/objects';
+import { DuctPart, DimensionLine } from '@/lib/objects';
 import { PaletteItemData, SnapPoint, Point } from '@/lib/types';
 import ContextMenu from '@/components/ContextMenu';
 
@@ -96,6 +96,14 @@ const CanvasArea = () => {
   const [measureStartPoint, setMeasureStartPoint] = useState<SnapPoint | null>(null);
   const [currentSnapPoint, setCurrentSnapPoint] = useState<SnapPoint | null>(null);
   const [editingDimension, setEditingDimension] = useState<{p1: SnapPoint, p2: SnapPoint} | null>(null);
+
+  const getPointForDim = useCallback((objects: DuctPart[], objectId: number, pointType: 'connector' | 'intersection', pointId: string | number): Point | null => {
+    const obj = objects.find(o => o.id === objectId);
+    if (!obj) return null;
+    const points = pointType === 'connector' ? obj.getConnectors() : obj.getIntersectionPoints();
+    const point = points.find(p => p.id === pointId);
+    return point ? { x: point.x, y: point.y } : null;
+  }, []);
 
   const worldToScreen = useCallback((worldX: number, worldY: number) => {
     const canvas = canvasRef.current!;
@@ -210,6 +218,9 @@ const CanvasArea = () => {
       });
 
       if (mode === 'measure') {
+        const p1 = measureStartPoint || currentSnapPoint;
+        const p2 = measureStartPoint ? (currentSnapPoint || lastWorldMousePos.current) : lastWorldMousePos.current;
+
         if (currentSnapPoint) {
             ctx.strokeStyle = '#4f46e5';
             ctx.lineWidth = 2 / camera.zoom;
@@ -217,23 +228,75 @@ const CanvasArea = () => {
             ctx.arc(currentSnapPoint.x, currentSnapPoint.y, 12 / camera.zoom, 0, 2 * Math.PI);
             ctx.stroke();
         }
-        if (measureStartPoint) {
-            const p1 = measureStartPoint;
-            const p2 = currentSnapPoint || lastWorldMousePos.current;
-            if (p1 && p2) {
-                ctx.beginPath();
-                ctx.moveTo(p1.x, p1.y);
-                ctx.lineTo(p2.x, p2.y);
-                ctx.strokeStyle = '#db2777';
-                ctx.lineWidth = 2 / camera.zoom;
-                ctx.stroke();
+
+        if (p1 && p2) {
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.strokeStyle = '#db2777';
+            ctx.lineWidth = 2 / camera.zoom;
+            ctx.stroke();
+
+            const distance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+            if (distance > 0.1) { // Only show label if there is a distance
+                const midX = (p1.x + p2.x) / 2;
+                const midY = (p1.y + p2.y) / 2;
+                
+                ctx.save();
+                ctx.translate(midX, midY);
+                ctx.font = `${18 / camera.zoom}px sans-serif`;
+                const text = `L: ${distance.toFixed(1)}`;
+                const textMetrics = ctx.measureText(text);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.fillRect(-textMetrics.width/2 - 5/camera.zoom, -15/camera.zoom, textMetrics.width + 10/camera.zoom, 22/camera.zoom);
+                ctx.fillStyle = '#db2777';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text, 0, 0);
+                ctx.restore();
             }
         }
       }
 
+      const dimensionGroups = new Map<string, DimensionLine[]>();
       dimensions.forEach(dim => {
-        dim.draw(ctx, camera, objects);
+          const p1 = getPointForDim(objects, dim.p1_objectId, dim.p1_pointType, dim.p1_pointId);
+          const p2 = getPointForDim(objects, dim.p2_objectId, dim.p2_pointType, dim.p2_pointId);
+          if (!p1 || !p2) return;
+
+          let angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+          if (angle < 0) angle += Math.PI;
+          
+          const A = p1.y - p2.y;
+          const B = p2.x - p1.x;
+          const C = p1.x * p2.y - p2.x * p1.y;
+          const perpDist = C / Math.sqrt(A*A + B*B);
+
+          const key = `${angle.toFixed(2)}|${(perpDist / 10).toFixed(0)}`; 
+          
+          if (!dimensionGroups.has(key)) {
+              dimensionGroups.set(key, []);
+          }
+          dimensionGroups.get(key)!.push(dim);
       });
+
+      for (const group of dimensionGroups.values()) {
+          group.sort((a, b) => {
+              const p1a = getPointForDim(objects, a.p1_objectId, a.p1_pointType, a.p1_pointId)!;
+              const p1b = getPointForDim(objects, b.p1_objectId, b.p1_pointType, b.p1_pointId)!;
+              const p2a = getPointForDim(objects, a.p2_objectId, a.p2_pointType, a.p2_pointId)!;
+              const angle = Math.atan2(p2a.y - p1a.y, p2a.x - p1a.x);
+              const dirX = Math.cos(angle);
+              const dirY = Math.sin(angle);
+              const posA = p1a.x * dirX + p1a.y * dirY;
+              const posB = p1b.x * dirX + p1b.y * dirY;
+              return posA - posB;
+          });
+
+          group.forEach((dim, indexInGroup) => {
+              dim.draw(ctx, camera, objects, getPointForDim, indexInGroup);
+          });
+      }
 
       ctx.restore();
 
@@ -254,7 +317,7 @@ const CanvasArea = () => {
     renderLoop();
 
     return () => window.cancelAnimationFrame(animationFrameId);
-  }, [objects, dimensions, camera, selectedObjectId, measureStartPoint, currentSnapPoint, mode, worldToScreen]);
+  }, [objects, dimensions, camera, selectedObjectId, measureStartPoint, currentSnapPoint, mode, worldToScreen, getPointForDim]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

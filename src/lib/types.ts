@@ -74,6 +74,12 @@ export interface HistoryState {
 // アプリケーションの操作モード
 export type AppMode = 'pan' | 'measure';
 
+export interface ErrorModalState {
+  isOpen: boolean;
+  title: string;
+  message: string;
+}
+
 // ZustandストアのState（状態）の型定義
 export interface AppState {
   objects: DuctPart[];
@@ -87,6 +93,7 @@ export interface AppState {
   mode: AppMode;
   fittings: FittingsData;
   isFittingsModalOpen: boolean;
+  errorModal: ErrorModalState;
 }
 
 // ZustandストアのActions（操作）の型定義
@@ -122,6 +129,8 @@ export interface AppActions {
   setMode: (mode: AppMode) => void;
   toggleFittingsModal: () => void;
   saveFittings: (newFittings: FittingsData) => void;
+  showErrorModal: (title: string, message: string) => void;
+  hideErrorModal: () => void;
 
   // 履歴操作
   undo: () => void;

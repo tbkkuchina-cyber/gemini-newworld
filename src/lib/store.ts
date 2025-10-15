@@ -55,6 +55,7 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
     mode: 'pan',
     fittings: fittingsMaster,
     isFittingsModalOpen: false,
+    errorModal: { isOpen: false, title: '', message: '' },
 
     addObject: (partType: DuctPartType, options: DuctPartOptions) => {
         const { nextId, saveHistory, recalculateGroups } = get();
@@ -505,6 +506,14 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
         set(state => {
             state.fittings = newFittings;
         });
+    },
+
+    showErrorModal: (title, message) => {
+        set({ errorModal: { isOpen: true, title, message } });
+    },
+
+    hideErrorModal: () => {
+        set({ errorModal: { isOpen: false, title: '', message: '' } });
     },
 
     saveHistory: () => {

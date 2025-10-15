@@ -60,7 +60,7 @@ export class DimensionLine {
         this.p2_pointType = options.p2_pointType;
     }
 
-    draw(ctx: CanvasRenderingContext2D, camera: { zoom: number }, objects: DuctPart[]): void {
+    draw(ctx: CanvasRenderingContext2D, camera: { zoom: number }, objects: DuctPart[], getPointForDim: (objects: DuctPart[], objectId: number, pointType: 'connector' | 'intersection', pointId: string | number) => Point | null, indexInGroup: number = 0): void {
         const p1 = getPointForDim(objects, this.p1_objectId, this.p1_pointType, this.p1_pointId);
         const p2 = getPointForDim(objects, this.p2_objectId, this.p2_pointType, this.p2_pointId);
         if (!p1 || !p2) return;
@@ -74,14 +74,23 @@ export class DimensionLine {
         ctx.textBaseline = 'bottom';
 
         const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-
         const perpAngle = angle - Math.PI / 2;
-        const offsetDist = 60 / camera.zoom;
+        
+        const baseOffset = 60;
+        const offsetIncrement = 25;
+        const offsetDist = (baseOffset + (indexInGroup * offsetIncrement)) / camera.zoom;
+        const extensionOverhang = 10 / camera.zoom;
+
         const perpDx = Math.cos(perpAngle);
         const perpDy = Math.sin(perpAngle);
-        const p1_ext = { x: p1.x + offsetDist * perpDx, y: p1.y + offsetDist * perpDy };
-        const p2_ext = { x: p2.x + offsetDist * perpDx, y: p2.y + offsetDist * perpDy };
-        ctx.globalAlpha = 0.5;
+
+        const p1_dim = { x: p1.x + offsetDist * perpDx, y: p1.y + offsetDist * perpDy };
+        const p2_dim = { x: p2.x + offsetDist * perpDx, y: p2.y + offsetDist * perpDy };
+        
+        const p1_ext = { x: p1_dim.x + extensionOverhang * perpDx, y: p1_dim.y + extensionOverhang * perpDy };
+        const p2_ext = { x: p2_dim.x + extensionOverhang * perpDx, y: p2_dim.y + extensionOverhang * perpDy };
+
+        ctx.globalAlpha = 0.7;
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
         ctx.lineTo(p1_ext.x, p1_ext.y);
@@ -90,32 +99,45 @@ export class DimensionLine {
         ctx.stroke();
         ctx.globalAlpha = 1.0;
 
+        // Draw arrow line
+        const headlen = 8 / camera.zoom;
         ctx.beginPath();
-        ctx.moveTo(p1_ext.x, p1_ext.y);
-        ctx.lineTo(p2_ext.x, p2_ext.y);
+        ctx.moveTo(p1_dim.x, p1_dim.y);
+        ctx.lineTo(p2_dim.x, p2_dim.y);
         ctx.stroke();
 
-        const midX = (p1_ext.x + p2_ext.x) / 2;
-        const midY = (p1_ext.y + p2_ext.y) / 2;
+        // Draw arrow heads
+        ctx.beginPath();
+        ctx.moveTo(p2_dim.x, p2_dim.y);
+        ctx.lineTo(p2_dim.x - headlen * Math.cos(angle - Math.PI / 6), p2_dim.y - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(p2_dim.x - headlen * Math.cos(angle + Math.PI / 6), p2_dim.y - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(p1_dim.x, p1_dim.y);
+        ctx.lineTo(p1_dim.x + headlen * Math.cos(angle - Math.PI / 6), p1_dim.y + headlen * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(p1_dim.x + headlen * Math.cos(angle + Math.PI / 6), p1_dim.y + headlen * Math.sin(angle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw text
+        const midX = (p1_dim.x + p2_dim.x) / 2;
+        const midY = (p1_dim.y + p2_dim.y) / 2;
         ctx.save();
         ctx.translate(midX, midY);
         ctx.rotate(angle);
         if (angle > Math.PI / 2 || angle < -Math.PI / 2) ctx.rotate(Math.PI);
-        ctx.fillStyle = 'white';
-        ctx.fillRect(-25 / camera.zoom, -12 / camera.zoom, 50 / camera.zoom, 24 / camera.zoom);
+        
+        const text = this.value.toFixed(1);
+        const textMetrics = ctx.measureText(text);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fillRect(-textMetrics.width / 2 - (2 / camera.zoom), -(16 / camera.zoom), textMetrics.width + (4 / camera.zoom), (18 / camera.zoom));
+        
         ctx.fillStyle = color;
-        ctx.fillText(this.value.toFixed(0), 0, 6 / camera.zoom);
+        ctx.fillText(text, 0, 0);
         ctx.restore();
     }
-}
-
-// Helper function to get point coordinates from object and point IDs
-export function getPointForDim(objects: DuctPart[], objectId: number, pointType: 'connector' | 'intersection', pointId: string | number): Point | null {
-    const obj = objects.find(o => o.id === objectId);
-    if (!obj) return null;
-    const points = pointType === 'connector' ? obj.getConnectors() : obj.getIntersectionPoints();
-    const point = points.find(p => p.id === pointId);
-    return point ? { x: point.x, y: point.y } : null;
 }
 
 export class DuctPart {
