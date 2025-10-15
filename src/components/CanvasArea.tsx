@@ -75,7 +75,8 @@ const CanvasArea = () => {
     deleteObject,
     undo,
     redo,
-    screenshotTrigger,
+    updateStraightRunDimensions,
+    screenshotTrigger, // ★ 追加
   } = useAppStore();
 
   const [interactionMode, setInteractionMode] = useState<'idle' | 'pan' | 'drag' | 'pinch'>('idle');
@@ -219,8 +220,8 @@ const CanvasArea = () => {
       });
 
       if (mode === 'measure') {
-        const p1 = measureStartPoint || currentSnapPoint;
-        const p2 = measureStartPoint ? (currentSnapPoint || lastWorldMousePos.current) : lastWorldMousePos.current;
+        const p1 = measureStartPoint || lastWorldMousePos.current;
+        const p2 = lastWorldMousePos.current;
 
         if (currentSnapPoint) {
             ctx.strokeStyle = '#4f46e5';
@@ -294,9 +295,11 @@ const CanvasArea = () => {
               return posA - posB;
           });
 
-          group.forEach((dim, indexInGroup) => {
-              dim.draw(ctx, camera, objects, getPointForDim, indexInGroup);
-          });
+      dimensions.forEach((dim, indexInGroup) => {
+        dim.draw(ctx, camera, objects, getPointForDim, indexInGroup);
+      });
+
+      updateStraightRunDimensions(); // ★ ここで呼び出しを追加
       }
 
       ctx.restore();
@@ -318,7 +321,7 @@ const CanvasArea = () => {
     renderLoop();
 
     return () => window.cancelAnimationFrame(animationFrameId);
-  }, [objects, dimensions, camera, selectedObjectId, measureStartPoint, currentSnapPoint, mode, worldToScreen, getPointForDim]);
+  }, [objects, dimensions, camera, selectedObjectId, measureStartPoint, currentSnapPoint, mode, worldToScreen, getPointForDim, updateStraightRunDimensions]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
