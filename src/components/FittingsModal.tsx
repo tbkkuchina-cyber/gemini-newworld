@@ -62,26 +62,25 @@ const FittingsModal = () => {
         toggleFittingsModal();
     };
 
-    const handlePropertyChange = (fittingId: string, property: keyof DuctPartOptions, value: number) => {
+    const handlePropertyChange = (fittingId: string, category: string, property: keyof DuctPartOptions, value: number) => {
         setEditingFittings(prev => {
             if (!prev) return null;
             const newState = JSON.parse(JSON.stringify(prev));
-            for (const category in newState) {
-                const fitting = newState[category].find((f: Fitting) => f.id === fittingId);
-                if (fitting && property in fitting.defaultOptions) {
-                    fitting.defaultOptions[property] = value;
+            const fitting = newState[category]?.find((f: Fitting) => f.id === fittingId);
 
-                    if ((fitting.type === 'Elbow90' || fitting.type === 'AdjustableElbow') && property === 'diameter') {
-                        if (fitting.type === 'AdjustableElbow' && fitting.defaultOptions.angle === 45) {
-                            fitting.defaultOptions.legLength = value * 0.4;
-                        } else {
-                            fitting.defaultOptions.legLength = value;
-                        }
+            if (fitting && property in fitting.defaultOptions) {
+                (fitting.defaultOptions as any)[property] = value;
+
+                // Auto-calculate legLength for elbows based on diameter
+                if (property === 'diameter') {
+                    if (category === '90°エルボ') {
+                        fitting.defaultOptions.legLength = value;
+                    } else if (category === '45°エルボ') {
+                        fitting.defaultOptions.legLength = Math.round(value * 0.4);
                     }
-                    
-                    fitting.name = generateFittingName(fitting);
-                    break;
                 }
+                
+                fitting.name = generateFittingName(fitting);
             }
             return newState;
         });
@@ -179,7 +178,7 @@ const FittingsModal = () => {
                                                                 type="number"
                                                                 value={value}
                                                                 step={property.includes('diameter') ? 25 : 1}
-                                                                onChange={(e) => handlePropertyChange(fitting.id, property, parseFloat(e.target.value) || 0)}
+                                                                onChange={(e) => handlePropertyChange(fitting.id, category, property, parseFloat(e.target.value) || 0)}
                                                                 className="w-full p-1 border rounded-md text-sm"
                                                             />
                                                         );
