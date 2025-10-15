@@ -56,6 +56,7 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
     fittings: fittingsMaster,
     isFittingsModalOpen: false,
     errorModal: { isOpen: false, title: '', message: '' },
+    confirmModal: { isOpen: false, title: '', message: '', onConfirm: () => {} },
     screenshotTrigger: 0,
 
     addObject: (partType: DuctPartType, options: DuctPartOptions) => {
@@ -515,6 +516,16 @@ export const useAppStore = create<AppState & AppActions>()(immer((set, get) => (
 
     hideErrorModal: () => {
         set({ errorModal: { isOpen: false, title: '', message: '' } });
+    },
+
+    showConfirmModal: (title, message, onConfirm) => {
+        set({ confirmModal: { isOpen: true, title, message, onConfirm } });
+    },
+
+    hideConfirmModal: () => {
+        set(state => {
+            state.confirmModal.isOpen = false;
+        });
     },
 
     triggerScreenshot: () => {

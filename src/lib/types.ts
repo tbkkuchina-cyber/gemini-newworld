@@ -80,6 +80,13 @@ export interface ErrorModalState {
   message: string;
 }
 
+export interface ConfirmModalState {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+}
+
 // ZustandストアのState（状態）の型定義
 export interface AppState {
   objects: DuctPart[];
@@ -94,6 +101,7 @@ export interface AppState {
   fittings: FittingsData;
   isFittingsModalOpen: boolean;
   errorModal: ErrorModalState;
+  confirmModal: ConfirmModalState;
   screenshotTrigger: number;
 }
 
@@ -133,6 +141,8 @@ export interface AppActions {
   saveFittings: (newFittings: FittingsData) => void;
   showErrorModal: (title: string, message: string) => void;
   hideErrorModal: () => void;
+  showConfirmModal: (title: string, message: string, onConfirm: () => void) => void;
+  hideConfirmModal: () => void;
 
   // 履歴操作
   undo: () => void;

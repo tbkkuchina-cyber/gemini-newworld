@@ -7,7 +7,8 @@ const Toolbar = () => {
   const { 
     undo, redo, history, historyIndex, mode, setMode, 
     zoomIn, zoomOut, resetView, clearCanvas, togglePalette,
-    triggerScreenshot
+    triggerScreenshot,
+    showConfirmModal
   } = useAppStore();
 
   const canUndo = historyIndex > 0;
@@ -44,9 +45,11 @@ const Toolbar = () => {
   };
 
   const handleClearCanvas = () => {
-    if (window.confirm('すべての部品と寸法を削除します。よろしいですか？')) {
-      clearCanvas();
-    }
+    showConfirmModal(
+      'キャンバスをクリア',
+      'すべての部品と寸法を削除します。この操作は元に戻せません。よろしいですか？',
+      () => clearCanvas()
+    );
   };
 
   const baseButtonClass = "p-2 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed";

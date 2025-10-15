@@ -4,6 +4,7 @@ import Script from "next/script"; // next/scriptをインポート
 import "./globals.css";
 import FittingsModal from '@/components/FittingsModal';
 import ErrorModal from '@/components/ErrorModal'; // ★ エラーモーダルをインポート
+import ConfirmModal from '@/components/ConfirmModal'; // ★ 確認モーダルをインポート
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,6 +35,7 @@ export default function RootLayout({
         {children}
         <FittingsModal />
         <ErrorModal /> {/* ★ エラーモーダルコンポーネントをここに追加 */}
+        <ConfirmModal />
         <Script
           id="sw-registration"
           strategy="afterInteractive"
