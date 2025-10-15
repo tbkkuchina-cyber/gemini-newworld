@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { PaletteItemData } from '@/lib/types';
 import {
     DuctPart,
@@ -22,8 +22,15 @@ const CANVAS_SIZE = 48; // ★ アイコンサイズを 64 -> 48 に変更
 
 const PaletteIcon: React.FC<PaletteIconProps> = ({ item }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [isMounted, setIsMounted] = useState(false);
 
     useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (!isMounted) return; // マウントされるまで描画しない
+
         const canvas = canvasRef.current;
         if (!canvas) return;
 
@@ -72,11 +79,15 @@ const PaletteIcon: React.FC<PaletteIconProps> = ({ item }) => {
 
         ctx.restore();
 
-    }, [item]);
+    }, [item, isMounted]);
 
     return (
         <div className="flex flex-col items-center justify-center gap-1">
-            <canvas ref={canvasRef} width={CANVAS_SIZE} height={CANVAS_SIZE} />
+            {isMounted ? (
+                <canvas ref={canvasRef} width={CANVAS_SIZE} height={CANVAS_SIZE} />
+            ) : (
+                <div style={{ width: CANVAS_SIZE, height: CANVAS_SIZE }} /> // サーバーサイドと初回クライアントレンダリング用のプレースホルダー
+            )}
             <p className="text-xs font-medium text-center">{item.name}</p>
         </div>
     );

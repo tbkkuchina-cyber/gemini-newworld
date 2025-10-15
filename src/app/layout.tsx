@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script"; // next/scriptをインポート
 import "./globals.css";
 import FittingsModal from '@/components/FittingsModal';
 import ErrorModal from '@/components/ErrorModal'; // ★ エラーモーダルをインポート
-import PwaRegistry from "@/components/PwaRegistry"; // PWA登録コンポーネントをインポート
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,7 +34,23 @@ export default function RootLayout({
         {children}
         <FittingsModal />
         <ErrorModal /> {/* ★ エラーモーダルコンポーネントをここに追加 */}
-        <PwaRegistry /> {/* PWA登録コンポーネントを呼び出し */}
+        <Script
+          id="sw-registration"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                  navigator.serviceWorker.register('/sw.js').then(registration => {
+                    console.log('SW registered: ', registration.scope);
+                  }).catch(registrationError => {
+                    console.log('SW registration failed: ', registrationError);
+                  });
+                });
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   );
