@@ -30,19 +30,7 @@ export default function RootLayout({
         <Script
           id="sw-registration"
           strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('./sw.js').then(registration => {
-                    console.log('SW registered: ', registration.scope);
-                  }).catch(registrationError => {
-                    console.log('SW registration failed: ', registrationError);
-                  });
-                });
-              }
-            `,
-          }}
+          src="/sw.js"
         />
       </body>
     </html>
