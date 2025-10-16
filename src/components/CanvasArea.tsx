@@ -533,6 +533,7 @@ const CanvasArea = () => {
       const item = JSON.parse(itemJson) as PaletteItemData;
       const { x, y } = getWorldMousePos(e.clientX, e.clientY);
       addObject(item.type, { ...item.defaultOptions, x, y });
+      selectObject(null); // オブジェクト追加後に選択状態を解除
     } catch (error) {
       console.error("Failed to parse dropped data:", error);
     }
