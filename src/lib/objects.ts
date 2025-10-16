@@ -233,7 +233,7 @@ export class StraightDuct extends DuctPart {
         ctx.save();
         if (isUpsideDown) ctx.rotate(Math.PI);
 
-        if (textMetrics.width > w - (20 / camera.zoom)) {
+        if (textMetrics.width > w - (40 / camera.zoom)) {
             // Draw with leader line if text is too wide for the duct
             ctx.beginPath();
             ctx.moveTo(0, 0); // Start line from center
