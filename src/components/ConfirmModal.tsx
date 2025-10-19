@@ -1,42 +1,44 @@
 'use client';
 
-import React from 'react';
-import { useAppStore } from '@/lib/store';
+import { X } from 'lucide-react';
 
-const ConfirmModal = () => {
-    const {
-        confirmModal,
-        hideConfirmModal,
-    } = useAppStore();
+interface ConfirmModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  children: React.ReactNode;
+}
 
-    if (!confirmModal.isOpen) {
-        return null;
-    }
+const ConfirmModal = ({ isOpen, onClose, onConfirm, title, children }: ConfirmModalProps) => {
+  if (!isOpen) return null;
 
-    const handleConfirm = () => {
-        confirmModal.onConfirm();
-        hideConfirmModal();
-    };
+  const handleConfirm = () => {
+    onConfirm();
+    onClose();
+  };
 
-    return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-2xl w-full max-w-md flex flex-col">
-                <div className="p-6">
-                    <h2 className="text-xl font-bold text-gray-800 mb-2">{confirmModal.title}</h2>
-                    <p className="text-gray-600">{confirmModal.message}</p>
-                </div>
-
-                 <div className="border-t p-4 flex justify-end bg-gray-50/70 space-x-2">
-                    <button onClick={hideConfirmModal} className="bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-md hover:bg-gray-300 transition-colors">
-                        キャンセル
-                    </button>
-                    <button onClick={handleConfirm} className="bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700 transition-colors">
-                        実行
-                    </button>
-                </div>
-            </div>
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm">
+        <div className="flex justify-between items-center border-b pb-3 mb-4">
+          <h2 className="text-xl font-bold">{title}</h2>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200">
+            <X size={20} />
+          </button>
         </div>
-    );
+        <div className="mb-4">{children}</div>
+        <div className="flex justify-end space-x-2">
+          <button onClick={onClose} className="bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-md hover:bg-gray-300">
+            キャンセル
+          </button>
+          <button onClick={handleConfirm} className="bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700">
+            実行
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default ConfirmModal;

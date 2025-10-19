@@ -1,151 +1,123 @@
-import { DuctPart, DimensionLine } from './objects';
+export interface Point {
+  x: number;
+  y: number;
+}
 
-// すべてのダクト部品の型を網羅
-export type DuctPartType = 
-  | 'StraightDuct' 
-  | 'Elbow90' 
-  | 'AdjustableElbow' 
-  | 'TeeReducer' 
-  | 'Reducer' 
-  | 'YBranch' 
-  | 'YBranchReducer' 
-  | 'Damper';
-
-// カメラ（視点）の状態を定義
 export interface Camera {
   x: number;
   y: number;
   zoom: number;
 }
 
-// ★ スナップポイントの型定義
-export interface Point {
-    x: number;
-    y: number;
-}
-export interface SnapPoint extends Point {
-    id: string | number;
-    type: 'connector' | 'intersection';
-    objectId: number;
+export type DuctType = 
+  | 'StraightDuct'
+  | 'Elbow90'
+  | 'AdjustableElbow'
+  | 'TeeReducer'
+  | 'YBranch'
+  | 'YBranchReducer'
+  | 'Reducer'
+  | 'Damper';
+
+export interface DuctPart<T extends DuctType> {
+  id: number;
+  groupId: number;
+  x: number;
+  y: number;
+  rotation: number;
+  diameter: number;
+  systemName: string;
+  type: T;
+  isSelected: boolean;
+  isFlipped: boolean;
 }
 
-// ダクト部品のオプション（全クラスのプロパティを網羅）
-export interface DuctPartOptions {
-  id?: number;
-  x?: number;
-  y?: number;
-  rotation?: number;
-  diameter?: number;
-  isSelected?: boolean;
-  systemName?: string;
-  isFlipped?: boolean;
-  groupId?: number;
-  length?: number;
+export interface StraightDuct extends DuctPart<'StraightDuct'> {
+  length: number;
+}
+
+export interface Elbow90 extends DuctPart<'Elbow90'> {
+  legLength: number;
+}
+
+export interface AdjustableElbow extends DuctPart<'AdjustableElbow'> {
+  legLength: number;
+  angle: number;
+}
+
+export interface TeeReducer extends DuctPart<'TeeReducer'> {
+  length: number;
+  branchLength: number;
+  diameter2: number;
+  diameter3: number;
+  intersectionOffset: number;
+}
+
+export interface YBranch<T extends 'YBranch' | 'YBranchReducer'> extends DuctPart<T> {
+  length: number;
+  angle: number;
+  branchLength: number;
+  intersectionOffset: number;
+}
+
+export interface YBranchReducer extends YBranch<'YBranchReducer'> {
+  diameter2: number;
+  diameter3: number;
+}
+
+export interface Reducer extends DuctPart<'Reducer'> {
+  length: number;
+  diameter2: number;
+}
+
+export interface Damper extends DuctPart<'Damper'> {
+  length: number;
+}
+
+export type AnyDuctPart = StraightDuct | Elbow90 | AdjustableElbow | TeeReducer | YBranch<'YBranch'> | YBranchReducer | Reducer | Damper;
+
+export interface FittingItem {
+  id: string;
+  name: string;
+  diameter: number;
+  visible: boolean;
   legLength?: number;
   angle?: number;
-  branchLength?: number;
-  intersectionOffset?: number;
   diameter2?: number;
   diameter3?: number;
+  length?: number;
+  branchLength?: number;
+  intersectionOffset?: number;
 }
 
-// パレットに表示するアイテムのデータ型を定義
-export interface PaletteItemData {
-  type: DuctPartType;
-  name: string;
-  defaultOptions: DuctPartOptions;
+export type Fittings = Record<string, FittingItem[]>;
+
+export interface Dimension {
+  id: string;
+  p1_objId: number;
+  p1_pointId: number | string;
+  p1_pointType: 'connector' | 'intersection';
+  p2_objId: number;
+  p2_pointId: number | string;
+  p2_pointType: 'connector' | 'intersection';
+  value: number;
 }
 
-// 継手のマスターデータの型定義
-export interface Fitting extends Omit<PaletteItemData, 'name'> {
-    id: string;
-    name: string;
-    visible: boolean;
-}
-export type FittingsData = Record<string, Fitting[]>; // ★ exportを追加
-
-
-// 履歴に保存する状態の型
-export interface HistoryState {
-    objects: DuctPart[];
-    dimensions: DimensionLine[];
+export interface SnapPoint extends Point {
+    objId: number;
+    pointId: number | string;
+    pointType: 'connector' | 'intersection';
 }
 
-// アプリケーションの操作モード
-export type AppMode = 'pan' | 'measure';
-
-export interface ErrorModalState {
-  isOpen: boolean;
-  title: string;
-  message: string;
+export interface Connector extends Point {
+  id: number | string;
+  angle: number;
+  diameter: number;
+  type?: 'main' | 'branch';
 }
 
-export interface ConfirmModalState {
-  isOpen: boolean;
+export interface ConfirmModalContent {
   title: string;
   message: string;
   onConfirm: () => void;
-}
-
-// ZustandストアのState（状態）の型定義
-export interface AppState {
-  objects: DuctPart[];
-  dimensions: DimensionLine[];
-  camera: Camera;
-  isPaletteOpen: boolean;
-  nextId: number;
-  selectedObjectId: number | null;
-  history: HistoryState[];
-  historyIndex: number;
-  mode: AppMode;
-  fittings: FittingsData;
-  isFittingsModalOpen: boolean;
-  errorModal: ErrorModalState;
-  confirmModal: ConfirmModalState;
-  screenshotTrigger: number;
-}
-
-// ZustandストアのActions（操作）の型定義
-export interface AppActions {
-  // オブジェクト操作
-  addObject: (partType: DuctPartType, options: DuctPartOptions) => void;
-  updateObjectPosition: (id: number, x: number, y: number) => void;
-  selectObject: (id: number | null) => void;
-  deleteObject: (id: number) => void;
-  rotateSelectedObject: () => void;
-  flipSelectedObject: () => void;
-  recalculateGroups: () => void;
-  mergeGroups: (sourceGroupId: number, targetGroupId: number) => void;
-  disconnectObject: (id: number) => void;
-
-  // 寸法線操作
-  addDimension: (p1: SnapPoint, p2: SnapPoint) => void;
-  applyDimensionAdjustment: (p1: SnapPoint, p2: SnapPoint, totalDistance: number) => void;
-  updateStraightRunDimensions: () => void;
-
-  // カメラ操作
-  panCamera: (dx: number, dy: number) => void;
-  zoomCamera: (delta: number, worldMousePos: { x: number; y: number }) => void;
-  zoomIn: () => void;
-  zoomOut: () => void;
-  resetView: () => void;
-
-  // キャンバス操作
-  clearCanvas: () => void;
-  triggerScreenshot: () => void;
-  
-  // UI操作
-  togglePalette: () => void;
-  setMode: (mode: AppMode) => void;
-  toggleFittingsModal: () => void;
-  saveFittings: (newFittings: FittingsData) => void;
-  showErrorModal: (title: string, message: string) => void;
-  hideErrorModal: () => void;
-  showConfirmModal: (title: string, message: string, onConfirm: () => void) => void;
-  hideConfirmModal: () => void;
-
-  // 履歴操作
-  undo: () => void;
-  redo: () => void;
-  saveHistory: () => void;
 }
