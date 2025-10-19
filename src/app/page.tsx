@@ -1,22 +1,72 @@
-// src/app/page.tsx
+'use client';
 
+import { useEffect } from "react";
 import CanvasArea from "@/components/CanvasArea";
+import ConfirmModal from "@/components/ConfirmModal";
+import ContextMenu from "@/components/ContextMenu";
+import DimensionModal from "@/components/DimensionModal";
+import FittingsModal from "@/components/FittingsModal";
 import Palette from "@/components/Palette";
 import Toolbar from "@/components/Toolbar";
+import { useDuctStoreContext } from "@/lib/store-provider";
+import { shallow } from 'zustand/shallow';
 
-export default function Home() {
+export default function Page() {
+  const {
+    isConfirmModalOpen,
+    confirmModalContent,
+    closeConfirmModal,
+    loadFittings,
+    isContextMenuOpen,
+    contextMenuPosition,
+    isDimensionModalOpen,
+    dimensionModalContent,
+    closeDimensionModal,
+    isFittingsModalOpen,
+  } = useDuctStoreContext((state) => ({
+    isConfirmModalOpen: state.isConfirmModalOpen,
+    confirmModalContent: state.confirmModalContent,
+    closeConfirmModal: state.closeConfirmModal,
+    loadFittings: state.loadFittings,
+    isContextMenuOpen: state.isContextMenuOpen,
+    contextMenuPosition: state.contextMenuPosition,
+    isDimensionModalOpen: state.isDimensionModalOpen,
+    dimensionModalContent: state.dimensionModalContent,
+    closeDimensionModal: state.closeDimensionModal,
+    isFittingsModalOpen: state.isFittingsModalOpen,
+  }));
+
+  useEffect(() => {
+    loadFittings();
+  }, [loadFittings]);
+
   return (
-    <div className="w-screen h-screen bg-gray-100 text-gray-800 flex flex-col md:flex-row overflow-hidden">
-      {/* メインエリア：モバイル(縦)では2番目、PC(横)では1番目に表示 */}
-      <main className="flex-1 flex flex-col order-2 md:order-1 min-w-0">
+    <div className="w-screen h-screen bg-gray-100 text-gray-800 flex flex-col md:flex-row">
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col relative">
         <Toolbar />
-        <div className="flex-1 relative">
-          <CanvasArea />
-        </div>
+        <CanvasArea />
+        <ContextMenu isOpen={isContextMenuOpen} position={contextMenuPosition} />
       </main>
-      
-      {/* パレットエリア：コンポーネント側で順序を制御 */}
+
+      {/* Sidebar */}
       <Palette />
+
+      {/* Modals */}
+      <ConfirmModal
+        isOpen={isConfirmModalOpen}
+        onClose={closeConfirmModal}
+        onConfirm={confirmModalContent.onConfirm}
+        title={confirmModalContent.title}
+      >
+        <p>{confirmModalContent.message}</p>
+      </ConfirmModal>
+      <DimensionModal
+        isOpen={isDimensionModalOpen}
+        onClose={closeDimensionModal}
+        content={dimensionModalContent}
+      />
+      <FittingsModal />
     </div>
   );
 }

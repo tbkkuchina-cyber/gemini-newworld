@@ -1,79 +1,73 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { useAppStore } from '@/lib/store';
-import { PaletteItemData } from '@/lib/types';
-import PaletteIcon from '@/components/PaletteIcon';
+import { useDuctStoreContext } from "@/lib/store-provider";
+import PaletteItem from "./PaletteItem";
+import { StraightDuct } from "@/lib/types";
+import { useEffect, useState } from "react";
 
 const Palette = () => {
-  const { addObject, camera, fittings, toggleFittingsModal, isPaletteOpen } = useAppStore();
-  const [systemName, setSystemName] = useState('SA-1');
-  const [diameter, setDiameter] = useState(100);
+  const { fittings, addObject, openFittingsModal } = useDuctStoreContext((state) => ({
+    fittings: state.fittings,
+    addObject: state.addObject,
+    openFittingsModal: state.openFittingsModal,
+  }));
+  const [isClient, setIsClient] = useState(false);
 
-  const visibleFittings = useMemo(() => {
-    return Object.values(fittings).flat().filter(fitting => fitting.visible);
-  }, [fittings]);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
-  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, item: PaletteItemData) => {
-    const dataToTransfer = {
-      ...item,
-      defaultOptions: {
-        ...item.defaultOptions,
-        diameter: diameter > 0 ? diameter : item.defaultOptions.diameter,
-        systemName: systemName || item.defaultOptions.systemName,
-      }
+
+  const handleAddStraightDuct = () => {
+    // This will add the duct to the center of the viewport later.
+    // For now, adds at (0,0).
+    const newDuct: StraightDuct = {
+      id: Date.now(),
+      groupId: Date.now(),
+      type: 'StraightDuct',
+      x: 0,
+      y: 0,
+      length: 400,
+      diameter: 100, // Default or from input
+      rotation: 0,
+      systemName: 'SA-1', // Default or from input
+      isSelected: false,
+      isFlipped: false,
     };
-    e.dataTransfer.setData('application/json', JSON.stringify(dataToTransfer));
+    addObject(newDuct);
   };
-
-  const handleAddClick = () => {
-    if (diameter > 0) {
-      const worldCenter = { x: camera.x, y: camera.y }; // Simplified for now
-      addObject('StraightDuct', { 
-        systemName,
-        diameter,
-        length: 200,
-        x: worldCenter.x,
-        y: worldCenter.y,
-      });
-    }
-  };
-
-  const paletteClasses = isPaletteOpen 
-    ? "w-full md:w-64 bg-white shadow-lg p-4 overflow-y-auto order-first md:order-last flex flex-col"
-    : "hidden";
 
   return (
-    <aside id="palette" className={paletteClasses}>
-        <div className="mb-6">
-            <div className="space-y-2">
-                 <div>
-                    <input type="text" value={systemName} onChange={(e) => setSystemName(e.target.value)} className="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500" placeholder="系統名" />
-                </div>
-                <div>
-                    <input type="number" value={diameter} onChange={(e) => setDiameter(parseInt(e.target.value, 10))} step="25" min="25" className="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500" placeholder="直径 (mm)" />
-                </div>
-                <button onClick={handleAddClick} className="w-full bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-indigo-700 transition-colors">
-                    直管を追加
-                </button>
-            </div>
+    <aside id="palette" className="w-full md:w-64 bg-white shadow-lg p-4 overflow-y-auto order-last md:order-first">
+      <div className="mb-6">
+        <div className="space-y-2">
+          <div>
+            <label htmlFor="system-name" className="text-sm font-medium">系統名</label>
+            <input type="text" id="system-name" defaultValue="SA-1" className="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div>
+            <label htmlFor="custom-diameter" className="text-sm font-medium">直径 (mm)</label>
+            <input type="number" id="custom-diameter" defaultValue="100" step="25" min="25" className="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <button onClick={handleAddStraightDuct} className="w-full bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-indigo-700 transition-colors">
+            直管を追加
+          </button>
         </div>
-        <div className="mb-6 border-t pt-4">
-             <button onClick={toggleFittingsModal} className="w-full bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-md hover:bg-gray-300 transition-colors">継手管理</button>
-        </div>
-        <div id="palette-items" className="grid grid-cols-2 gap-4 flex-1 overflow-y-auto pr-1">
-            {visibleFittings.map((item) => (
-              <div 
-                key={item.id} 
-                className="bg-white p-2 border rounded-md shadow-sm cursor-grab text-center transition-all duration-200 ease-in-out hover:scale-105 hover:shadow-md flex flex-col items-center justify-center"
-                draggable={true} 
-                onDragStart={(e) => handleDragStart(e, item)}
-              >
-                <PaletteIcon item={item} />
-                <p className='text-sm mt-1 font-medium'>{item.name}</p>
-              </div>
-            ))}
-        </div>
+      </div>
+
+      <div className="mb-6 border-t pt-4">
+        <button onClick={openFittingsModal} className="w-full bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-md hover:bg-gray-300 transition-colors">
+          継手管理
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {isClient && Object.entries(fittings).map(([category, items]) => (
+          items.filter(item => item.visible).map(item => (
+            <PaletteItem key={item.id} item={item} type={category} />
+          ))
+        ))}
+      </div>
     </aside>
   );
 };
