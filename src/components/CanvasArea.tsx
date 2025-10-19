@@ -299,7 +299,7 @@ const CanvasArea = () => {
         dim.draw(ctx, camera, objects, getPointForDim, indexInGroup);
       });
 
-      updateStraightRunDimensions(); // ★ ここで呼び出しを追加
+
       }
 
       ctx.restore();
