@@ -1,10 +1,7 @@
 
-import { Camera, AnyDuctPart, StraightDuct, Point, Elbow90, AdjustableElbow, TeeReducer, YBranch, YBranchReducer, Reducer, Damper, SnapPoint, Dimension } from "./types";
+import { Camera, AnyDuctPart, Point, SnapPoint, Dimension, IDuctPart } from "./types";
 import { createDuctPart } from "./duct-models";
 
-// =================================================================================
-// Color Definitions
-// =================================================================================
 const DIAMETER_COLORS: Record<string | number, string> = {
     default: '#60a5fa', // blue-400
     100: '#93c5fd',   // blue-300
@@ -15,7 +12,7 @@ const DIAMETER_COLORS: Record<string | number, string> = {
     250: '#fdba74',   // orange-300
 };
 
-function getColorForDiameter(diameter: number): string {
+export function getColorForDiameter(diameter: number): string {
     return DIAMETER_COLORS[diameter] || DIAMETER_COLORS.default;
 }
 
@@ -52,409 +49,14 @@ export function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera) {
   }
 }
 
-function drawStraightDuct(ctx: CanvasRenderingContext2D, part: StraightDuct, camera: Camera) {
-    const { length, diameter, systemName, isSelected, rotation } = part;
-    const width = length;
-    const height = diameter;
-
-    ctx.fillStyle = getColorForDiameter(diameter);
-    ctx.fillRect(-width / 2, -height / 2, width, height);
-    ctx.strokeRect(-width / 2, -height / 2, width, height);
-
-    if (isSelected) {
-        ctx.strokeStyle = '#4f46e5';
-        ctx.lineWidth = 4 / camera.zoom;
-        ctx.strokeRect(-width / 2 - 5, -height / 2 - 5, width + 10, height + 10);
-    }
-
-    ctx.fillStyle = '#1e293b';
-    ctx.font = `${16 / camera.zoom}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    
-    const text = `${systemName} D${diameter} L${Math.round(length)}`;
-    const textMetrics = ctx.measureText(text);
-
-    const angle = (rotation % 360 + 360) % 360;
-    const isUpsideDown = angle > 90 && angle < 270;
-
-    ctx.save();
-    if (isUpsideDown) {
-        ctx.rotate(Math.PI);
-    }
-
-    if (textMetrics.width > (width - 20) * camera.zoom) {
-        // Draw with leader line if text is too wide
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(60 / camera.zoom, height/2 + 60 / camera.zoom);
-        ctx.lineTo(textMetrics.width / (2 * camera.zoom) + 70 / camera.zoom, height/2 + 60 / camera.zoom);
-        ctx.strokeStyle = '#334155';
-        ctx.lineWidth = 1 / camera.zoom;
-        ctx.stroke();
-
-        ctx.textAlign = 'left';
-        ctx.fillText(text, 70 / camera.zoom, height/2 + 60 / camera.zoom);
-    } else {
-        // Draw text inside the duct
-        ctx.fillText(text, 0, 0);
-    }
-    ctx.restore();
-}
-
-function drawElbow90(ctx: CanvasRenderingContext2D, part: Elbow90, camera: Camera) {
-    const { legLength, diameter, isSelected, rotation } = part;
-    
-    ctx.strokeStyle = getColorForDiameter(diameter);
-    ctx.lineWidth = diameter;
-    ctx.lineCap = 'butt';
-
-    ctx.beginPath();
-    ctx.moveTo(0, legLength);
-    ctx.lineTo(0, 0);
-    ctx.lineTo(legLength, 0);
-    ctx.stroke();
-
-    ctx.lineWidth = 2 / camera.zoom;
-    ctx.strokeStyle = '#1e293b';
-    ctx.stroke();
-
-    if (isSelected) {
-        ctx.strokeStyle = '#4f46e5';
-        ctx.lineWidth = diameter + 8 / camera.zoom;
-        ctx.globalAlpha = 0.5;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.beginPath();
-        ctx.moveTo(0, legLength);
-        ctx.lineTo(0, 0);
-        ctx.lineTo(legLength, 0);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-    }
-
-    ctx.fillStyle = '#1e293b';
-    ctx.font = `${14 / camera.zoom}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    const text = `D${diameter} L:${legLength}`;
-
-    // Text on horizontal leg
-    const angle1 = (rotation % 360 + 360) % 360;
-    const isUpsideDown1 = angle1 > 90 && angle1 < 270;
-    ctx.save();
-    if (isUpsideDown1) {
-        ctx.rotate(Math.PI);
-    }
-    ctx.fillText(text, legLength / 2, -diameter / 2 - 5 / camera.zoom);
-    ctx.restore();
-    
-    // Text on vertical leg
-    const angle2 = ((rotation + 270) % 360 + 360) % 360;
-    const isUpsideDown2 = angle2 > 90 && angle2 < 270;
-    ctx.save();
-    ctx.translate(0, legLength);
-    ctx.rotate(-Math.PI / 2);
-    if (isUpsideDown2) {
-         ctx.rotate(Math.PI);
-    }
-    ctx.fillText(text, legLength / 2, -diameter / 2 - 5 / camera.zoom);
-    ctx.restore();
-}
-
-function drawAdjustableElbow(ctx: CanvasRenderingContext2D, part: AdjustableElbow, camera: Camera) {
-    const { legLength, angle, diameter, isFlipped, isSelected, rotation } = part;
-    const currentAngle = isFlipped ? -angle : angle;
-    const angleRad = currentAngle * Math.PI / 180;
-
-    const leg1X = legLength * Math.cos(-angleRad / 2);
-    const leg1Y = -legLength * Math.sin(-angleRad / 2);
-    const leg2X = legLength * Math.cos(angleRad / 2);
-    const leg2Y = -legLength * Math.sin(angleRad / 2);
-
-    ctx.strokeStyle = getColorForDiameter(diameter);
-    ctx.lineWidth = diameter;
-    ctx.lineCap = 'butt';
-    
-    ctx.beginPath();
-    ctx.moveTo(leg1X, leg1Y);
-    ctx.lineTo(0, 0);
-    ctx.lineTo(leg2X, leg2Y);
-    ctx.stroke();
-
-    ctx.lineWidth = 2 / camera.zoom;
-    ctx.strokeStyle = '#1e293b';
-    ctx.stroke();
-
-    if (isSelected) {
-        ctx.strokeStyle = '#4f46e5';
-        ctx.lineWidth = diameter + 8 / camera.zoom;
-        ctx.globalAlpha = 0.5;
-        ctx.lineJoin = 'round';
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-    }
-
-    ctx.fillStyle = '#1e293b';
-    ctx.font = `${14 / camera.zoom}px sans-serif`;
-    ctx.textAlign = 'center';
-    const text = `D${diameter} L:${legLength}`;
-
-    const placeTextOnLeg = (legAngle: number) => {
-        const worldAngleDeg = rotation + (legAngle * 180 / Math.PI);
-        const effectiveAngle = (worldAngleDeg % 360 + 360) % 360;
-        const isUpsideDown = effectiveAngle > 90 && effectiveAngle < 270;
-
-        ctx.save();
-        ctx.translate((legLength / 2) * Math.cos(legAngle), (legLength / 2) * Math.sin(legAngle));
-        ctx.rotate(legAngle);
-        if (isUpsideDown) {
-            ctx.rotate(Math.PI);
-        }
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(text, 0, -diameter / 2 - 5 / camera.zoom);
-        ctx.restore();
-    };
-
-    placeTextOnLeg(-angleRad / 2);
-    placeTextOnLeg(angleRad / 2);
-}
-
-function drawTeeReducer(ctx: CanvasRenderingContext2D, part: TeeReducer, camera: Camera) {
-    const { length, branchLength, diameter, diameter2, diameter3, intersectionOffset, isFlipped, isSelected, rotation } = part;
-    const branchY = isFlipped ? branchLength : -branchLength;
-
-    // Branch
-    ctx.fillStyle = getColorForDiameter(diameter3);
-    ctx.fillRect(intersectionOffset - diameter3 / 2, 0, diameter3, branchY);
-    ctx.strokeRect(intersectionOffset - diameter3 / 2, 0, diameter3, branchY);
-
-    // Main
-    ctx.fillStyle = getColorForDiameter(diameter);
-    ctx.fillRect(-length / 2, -diameter / 2, length, diameter);
-    ctx.strokeRect(-length / 2, -diameter / 2, length, diameter);
-
-    if (isSelected) {
-        ctx.strokeStyle = '#4f46e5';
-        ctx.lineWidth = 4 / camera.zoom;
-        const b = { x: -length/2, y: -diameter/2, w: length, h: diameter }; // Simplified bounds
-        ctx.strokeRect(b.x, b.y, b.w, b.h);
-    }
-
-    ctx.fillStyle = '#1e293b';
-    ctx.font = `${14 / camera.zoom}px sans-serif`;
-    ctx.textAlign = 'center';
-    
-    // Main pipe text
-    const mainAngle = (rotation % 360 + 360) % 360;
-    const mainIsUpsideDown = mainAngle > 90 && mainAngle < 270;
-
-    ctx.save();
-    if (mainIsUpsideDown) {
-        ctx.rotate(Math.PI);
-    }
-    const leftLength = length / 2 + intersectionOffset;
-    const rightLength = length / 2 - intersectionOffset;
-    const leftTextX = (-length / 2 + intersectionOffset) / 2;
-    const rightTextX = (intersectionOffset + length / 2) / 2;
-
-    ctx.textBaseline = mainIsUpsideDown ? 'bottom' : 'top';
-    ctx.fillText(`L:${leftLength.toFixed(1)}`, leftTextX, diameter / 2 + 5 / camera.zoom);
-    ctx.fillText(`L:${rightLength.toFixed(1)}`, rightTextX, diameter / 2 + 5 / camera.zoom);
-    
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`D${diameter}-${diameter2}`, 0, 0);
-    ctx.restore();
-    
-    // Branch pipe text
-    const branchAngle = (rotation + (isFlipped ? 90 : 270)) % 360;
-    const branchIsUpsideDown = ((branchAngle % 360 + 360) % 360 > 90 && (branchAngle % 360 + 360) % 360 < 270);
-    
-    ctx.save();
-    ctx.translate(intersectionOffset, branchY / 2);
-    ctx.rotate(isFlipped ? Math.PI / 2 : -Math.PI / 2);
-    if (branchIsUpsideDown) {
-        ctx.rotate(Math.PI);
-    }
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(`D${diameter3} L:${branchLength}`, 0, -diameter3 / 2 - 5 / camera.zoom);
-    ctx.restore();
-}
-
-function drawYBranch(ctx: CanvasRenderingContext2D, part: YBranch<'YBranch'> | YBranchReducer, camera: Camera) {
-    const { length, angle, branchLength, intersectionOffset, diameter, isFlipped, isSelected, rotation } = part;
-    const currentAngle = isFlipped ? -angle : angle;
-    const branchAngleRad = -currentAngle * Math.PI / 180;
-    const branchDiameter = (part.type === 'YBranchReducer') ? part.diameter3 : diameter;
-
-    // Branch
-    ctx.save();
-    ctx.translate(intersectionOffset, 0);
-    ctx.rotate(branchAngleRad);
-    ctx.fillStyle = getColorForDiameter(branchDiameter);
-    ctx.fillRect(0, -branchDiameter / 2, branchLength, branchDiameter);
-    ctx.strokeRect(0, -branchDiameter / 2, branchLength, branchDiameter);
-    ctx.restore();
-
-    // Main
-    ctx.fillStyle = getColorForDiameter(diameter);
-    ctx.fillRect(-length / 2, -diameter / 2, length, diameter);
-    ctx.strokeRect(-length / 2, -diameter / 2, length, diameter);
-
-    if (isSelected) {
-        ctx.strokeStyle = '#4f46e5';
-        ctx.lineWidth = 4 / camera.zoom;
-        ctx.strokeRect(-length / 2 - 5, -diameter / 2 - 5, length + 10, diameter + 10);
-    }
-
-    ctx.fillStyle = '#1e293b';
-    ctx.font = `${14 / camera.zoom}px sans-serif`;
-    ctx.textAlign = 'center';
-
-    // Main pipe text
-    const mainOutletDiameter = (part.type === 'YBranchReducer') ? part.diameter2 : diameter;
-    const mainAngle = (rotation % 360 + 360) % 360;
-    const mainIsUpsideDown = mainAngle > 90 && mainAngle < 270;
-
-    ctx.save();
-    if(mainIsUpsideDown) {
-         ctx.rotate(Math.PI);
-    }
-    const leftLength = length / 2 + intersectionOffset;
-    const rightLength = length / 2 - intersectionOffset;
-    const leftTextX = (-length / 2 + intersectionOffset) / 2;
-    const rightTextX = (intersectionOffset + length / 2) / 2;
-
-    ctx.textBaseline = mainIsUpsideDown ? 'bottom' : 'top';
-    ctx.fillText(`L:${leftLength.toFixed(1)}`, leftTextX, diameter / 2 + 5 / camera.zoom);
-    ctx.fillText(`L:${rightLength.toFixed(1)}`, rightTextX, diameter / 2 + 5 / camera.zoom);
-
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`D${diameter}-${mainOutletDiameter}`, 0, 0);
-    ctx.restore();
-
-    // Branch pipe text
-    const branchWorldAngle = (rotation - angle + 360) % 360;
-    const branchIsUpsideDown = branchWorldAngle > 90 && branchWorldAngle < 270;
-
-    ctx.save();
-    ctx.translate(intersectionOffset + (branchLength / 2) * Math.cos(branchAngleRad), (branchLength / 2) * Math.sin(branchAngleRad));
-    ctx.rotate(branchAngleRad);
-    if(branchIsUpsideDown) {
-        ctx.rotate(Math.PI);
-    }
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(`D${branchDiameter} L:${branchLength}`, 0, -branchDiameter / 2 - 5 / camera.zoom);
-    ctx.restore();
-}
-
-function drawReducer(ctx: CanvasRenderingContext2D, part: Reducer, camera: Camera) {
-    const { length, diameter, diameter2, isSelected, rotation } = part;
-    const halfLen = length / 2;
-    const d1_half = diameter / 2;
-    const d2_half = diameter2 / 2;
-
-    ctx.fillStyle = getColorForDiameter(diameter);
-    ctx.beginPath();
-    ctx.moveTo(-halfLen, -d1_half);
-    ctx.lineTo(halfLen, -d2_half);
-    ctx.lineTo(halfLen, d2_half);
-    ctx.lineTo(-halfLen, d1_half);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    if (isSelected) {
-        ctx.strokeStyle = '#4f46e5';
-        ctx.lineWidth = 4 / camera.zoom;
-        ctx.stroke();
-    }
-
-    ctx.fillStyle = '#1e293b';
-    ctx.font = `${14 / camera.zoom}px sans-serif`;
-    ctx.textAlign = 'center';
-    
-    const angle = (rotation % 360 + 360) % 360;
-    const isUpsideDown = angle > 90 && angle < 270;
-    
-    ctx.save();
-    if (isUpsideDown) {
-        ctx.rotate(Math.PI);
-    }
-    ctx.fillText(`D${diameter}-${diameter2} L:${length}`, 0, Math.max(d1_half, d2_half) + 15 / camera.zoom);
-    ctx.restore();
-}
-
-function drawDamper(ctx: CanvasRenderingContext2D, part: Damper, camera: Camera) {
-    const { length, diameter, isSelected } = part;
-    const width = length;
-    const height = diameter;
-
-    ctx.fillStyle = '#9ca3af'; // Damper color
-    ctx.fillRect(-width / 2, -height / 2, width, height);
-    ctx.strokeRect(-width / 2, -height / 2, width, height);
-
-    // Blade
-    ctx.beginPath();
-    ctx.moveTo(-width / 2 + 5, 0);
-    ctx.lineTo(width / 2 - 5, 0);
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 3 / camera.zoom;
-    ctx.stroke();
-
-    if (isSelected) {
-        ctx.strokeStyle = '#4f46e5';
-        ctx.lineWidth = 4 / camera.zoom;
-        ctx.strokeRect(-width / 2 - 5, -height / 2 - 5, width + 10, height + 10);
-    }
-
-    ctx.fillStyle = '#1e293b';
-    ctx.font = `${16 / camera.zoom}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`D${diameter} L${Math.round(length)}`, 0, 0);
-}
-
-
 export function drawObjects(ctx: CanvasRenderingContext2D, objects: AnyDuctPart[], camera: Camera) {
   for (const obj of objects) {
-    ctx.save();
-    ctx.translate(obj.x, obj.y);
-    ctx.rotate(obj.rotation * Math.PI / 180);
-    
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 2 / camera.zoom;
-
-    switch (obj.type) {
-      case 'StraightDuct':
-        drawStraightDuct(ctx, obj, camera);
-        break;
-      case 'Elbow90':
-        drawElbow90(ctx, obj, camera);
-        break;
-      case 'AdjustableElbow':
-        drawAdjustableElbow(ctx, obj, camera);
-        break;
-      case 'TeeReducer':
-        drawTeeReducer(ctx, obj, camera);
-        break;
-      case 'YBranch':
-      case 'YBranchReducer':
-        drawYBranch(ctx, obj, camera);
-        break;
-      case 'Reducer':
-        drawReducer(ctx, obj, camera);
-        break;
-      case 'Damper':
-        drawDamper(ctx, obj, camera);
-        break;
-      default:
-        console.warn('Unknown duct part type:', (obj as any).type);
+    const model = createDuctPart(obj.type, obj as Omit<IDuctPart<any>, 'type'>);
+    if (model) {
+      model.draw(ctx, camera);
     }
-    ctx.restore();
   }
 }
-
 // =================================================================================
 // Coordinate and Hit-Test Functions
 // =================================================================================
@@ -477,8 +79,8 @@ export function getObjectAt(worldPoint: Point, objects: AnyDuctPart[]): AnyDuctP
   // Iterate through objects in reverse order to pick the topmost one if they overlap
   for (let i = objects.length - 1; i >= 0; i--) {
     const obj = objects[i];
-    const model = createDuctPart(obj);
-    if (model && model.isPointInside(worldPoint)) {
+    const model = createDuctPart(obj.type, obj as Omit<IDuctPart<any>, 'type'>);
+    if (model && model.isPointInside(worldPoint.x, worldPoint.y)) {
       return obj;
     }
   }
@@ -535,7 +137,7 @@ export function findNearestConnector(worldPoint: Point, objects: AnyDuctPart[], 
   const snapDist = 20 / camera.zoom;
 
   for (const obj of objects) {
-    const model = createDuctPart(obj);
+    const model = createDuctPart(obj.type, obj as Omit<IDuctPart<any>, 'type'>);
     if (model) {
       for (const c of model.getConnectors()) {
         const dist = Math.hypot(worldPoint.x - c.x, worldPoint.y - c.y);
@@ -559,10 +161,9 @@ export function findNearestConnector(worldPoint: Point, objects: AnyDuctPart[], 
 function getPointForDim(objId: number, pointId: number | string, objects: AnyDuctPart[]): Point | null {
     const obj = objects.find(o => o.id === objId);
     if (!obj) return null;
-    const model = createDuctPart(obj);
+    const model = createDuctPart(obj!.type, obj! as Omit<IDuctPart<any>, 'type'>);
     if (!model) return null;
-    const connectors = model.getConnectors();
-    const point = connectors.find(p => p.id === pointId);
+    const point = model.getConnectors().find(c => c.id === pointId);
     return point ? { x: point.x, y: point.y } : null;
 };
 
@@ -619,7 +220,7 @@ export function drawConnectors(ctx: CanvasRenderingContext2D, objects: AnyDuctPa
   ctx.fillStyle = 'rgba(255, 193, 7, 0.7)';
 
   for (const obj of objects) {
-    const model = createDuctPart(obj);
+    const model = createDuctPart(obj.type, obj as Omit<IDuctPart<any>, 'type'>);
     if (model) {
       const connectors = model.getConnectors();
       for (const c of connectors) {

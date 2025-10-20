@@ -2,6 +2,7 @@
 
 import { useDuctStoreContext } from '@/lib/store-provider';
 import { RotateCw, FlipHorizontal, Trash2, Link2Off } from 'lucide-react';
+import { DuctPartType } from '@/lib/types';
 
 interface ContextMenuProps {
   isOpen: boolean;
@@ -27,11 +28,9 @@ const ContextMenu = ({ isOpen, position }: ContextMenuProps) => {
 
   if (!isOpen || !selectedObject) return null;
 
-  const isFlippable = selectedObject.type === 'AdjustableElbow' || 
-    selectedObject.type === 'TeeReducer' || 
-    selectedObject.type === 'YBranch' || 
-    selectedObject.type === 'YBranchReducer' ||
-    selectedObject.type === 'Reducer';
+  const isFlippable = selectedObject.type === DuctPartType.Elbow || 
+    selectedObject.type === DuctPartType.Branch || 
+    selectedObject.type === DuctPartType.Reducer;
 
   const isInGroup = objects.some(o => o.id !== selectedObject.id && o.groupId === selectedObject.groupId);
 

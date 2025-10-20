@@ -2,17 +2,19 @@ import { RefObject, useEffect, useRef } from 'react';
 import { shallow } from 'zustand/shallow';
 import { useDuctStoreContext } from '@/lib/store-provider';
 import { getObjectAt, screenToWorld, worldToScreen, findNearestConnector } from '@/lib/canvas-utils';
-import { AnyDuctPart, DuctType, Point } from '@/lib/types';
+import { AnyDuctPart, DuctPartType, Point, IDuctPart } from '@/lib/types';
 import { createDuctPart } from '@/lib/duct-models';
 
-const categoryToDuctType: Record<string, DuctType> = {
-    '90°エルボ': 'Elbow90',
-    '45°エルボ': 'AdjustableElbow',
-    '可変角度エルボ': 'AdjustableElbow',
-    'T字管レジューサー': 'TeeReducer',
-    'Y字管レジューサー': 'YBranchReducer',
-    'レジューサー': 'Reducer',
-    'ダンパー': 'Damper',
+const categoryToDuctType: Record<string, DuctPartType> = {
+    '90°エルボ': DuctPartType.Elbow,
+    '45°エルボ': DuctPartType.Elbow,
+    '可変角度エルボ': DuctPartType.Elbow,
+    'T字管レジューサー': DuctPartType.Branch,
+    'Y字管レジューサー': DuctPartType.Branch,
+    'レジューサー': DuctPartType.Reducer,
+    'ダンパー': DuctPartType.Straight,
+    'キャップ': DuctPartType.Cap,
+    'T字管': DuctPartType.Tee,
 };
 
 const SNAP_DISTANCE = 20;
@@ -78,14 +80,14 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
       let bestSnap: SnapResult = { dist: Infinity, dx: 0, dy: 0, otherObj: null };
       const snapDist = SNAP_DISTANCE / camera.zoom;
 
-      const draggedModel = createDuctPart(draggedObj);
+      const draggedModel = createDuctPart(draggedObj.type, draggedObj as Omit<IDuctPart<any>, 'type'>);
       if (!draggedModel) return null;
 
       for (const draggedConnector of draggedModel.getConnectors()) {
         for (const staticObj of objects) {
           if (staticObj.groupId === draggedObj.groupId) continue;
 
-          const staticModel = createDuctPart(staticObj);
+          const staticModel = createDuctPart(staticObj.type, staticObj as Omit<IDuctPart<any>, 'type'>);
           if (!staticModel) continue;
 
           for (const staticConnector of staticModel.getConnectors()) {
@@ -235,7 +237,7 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
       const screenPoint = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       const worldPoint = screenToWorld(screenPoint, canvas, camera);
 
-      const ductType = categoryToDuctType[category] || 'StraightDuct';
+      const ductType = categoryToDuctType[category] || DuctPartType.Straight;
 
       const newPart = {
         ...item,

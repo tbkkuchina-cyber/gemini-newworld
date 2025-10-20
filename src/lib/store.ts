@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { temporal } from 'zundo';
-import { AnyDuctPart, Camera, Point, Fittings, ConfirmModalContent, Dimension, SnapPoint, FittingItem } from './types';
+import { AnyDuctPart, Camera, Point, Fittings, ConfirmModalContent, Dimension, SnapPoint, FittingItem, DuctPartType } from './types';
 import { getDefaultFittings } from './default-fittings';
 
 const FITTINGS_STORAGE_KEY = 'ductAppFittings';
@@ -27,6 +27,7 @@ export interface DuctState {
   isDimensionModalOpen: boolean;
   dimensionModalContent: DimensionModalContent | null;
   isFittingsModalOpen: boolean;
+  nextId: number;
 }
 
 export interface DuctActions {
@@ -59,6 +60,8 @@ export interface DuctActions {
   closeDimensionModal: () => void;
   openFittingsModal: () => void;
   closeFittingsModal: () => void;
+  setNextId: (id: number) => void;
+  incrementNextId: () => void;
 }
 
 const initialState: DuctState = {
@@ -81,6 +84,7 @@ const initialState: DuctState = {
   isDimensionModalOpen: false,
   dimensionModalContent: null,
   isFittingsModalOpen: false,
+  nextId: 0,
 };
 
 
@@ -92,6 +96,18 @@ export const createDuctStore = () => create<DuctState & DuctActions>()(
       addObject: (part) => {
         set((state) => {
           state.objects.push(part);
+        });
+      },
+
+      setNextId: (id) => {
+        set((state) => {
+          state.nextId = id;
+        });
+      },
+
+      incrementNextId: () => {
+        set((state) => {
+          state.nextId++;
         });
       },
 
@@ -301,8 +317,14 @@ export const createDuctStore = () => create<DuctState & DuctActions>()(
           const newItem: FittingItem = {
             id: `${category}-${Date.now()}`,
             name: 'New Fitting',
-            diameter: 100,
             visible: true,
+            type: DuctPartType.Straight, // Default type
+            data: {
+              start: { x: 0, y: 0 },
+              end: { x: 100, y: 0 }, // Default length
+              diameter: 100,
+              length: 100,
+            },
           };
           state.fittings[category].push(newItem);
         });

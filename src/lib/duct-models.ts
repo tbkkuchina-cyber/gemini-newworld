@@ -1,6 +1,20 @@
-import { AnyDuctPart, DuctPart as IDuctPart, Point, StraightDuct as IStraightDuct, Elbow90 as IElbow90, AdjustableElbow as IAdjustableElbow, TeeReducer as ITeeReducer, YBranch as IYBranch, YBranchReducer as IYBranchReducer, Reducer as IReducer, Damper as IDamper, Connector, DuctType } from "./types";
+import {
+  DuctPartType,
+  IDuctPart,
+  Point,
+  StraightDuct,
+  ElbowDuct,
+  ReducerDuct,
+  BranchDuct,
+  CapDuct,
+  TeeDuct,
+  Camera,
+  Connector,
+} from './types';
+import { getColorForDiameter } from './canvas-utils';
 
-abstract class DuctPart<T extends DuctType> implements IDuctPart<T> {
+
+export abstract class DuctPart<T extends DuctPartType> implements IDuctPart<T> {
   id: number;
   groupId: number;
   x: number;
@@ -11,8 +25,10 @@ abstract class DuctPart<T extends DuctType> implements IDuctPart<T> {
   type: T;
   isSelected: boolean;
   isFlipped: boolean;
+  data: IDuctPart<T>['data'];
+  name: string;
 
-  constructor(data: Omit<IDuctPart<T>, 'type'>, type: T) {
+  constructor(data: IDuctPart<T>) {
     this.id = data.id;
     this.groupId = data.groupId;
     this.x = data.x;
@@ -20,385 +36,677 @@ abstract class DuctPart<T extends DuctType> implements IDuctPart<T> {
     this.rotation = data.rotation;
     this.diameter = data.diameter;
     this.systemName = data.systemName;
+    this.type = data.type;
     this.isSelected = data.isSelected;
     this.isFlipped = data.isFlipped;
-    this.type = type;
+    this.data = data.data;
+    this.name = data.name;
   }
 
-  abstract isPointInside(point: Point): boolean;
+  get color(): string { return getColorForDiameter(this.diameter); }
+
+  abstract draw(ctx: CanvasRenderingContext2D, camera: Camera): void;
+  abstract drawCenterline(ctx: CanvasRenderingContext2D, camera: Camera): void;
   abstract getConnectors(): Connector[];
+  abstract getIntersectionPoints(): Point[];
+  abstract isPointInside(px: number, py: number): boolean;
+
+  rotate(): void { this.rotation = (this.rotation + 45) % 360; }
+  flip(): void { this.isFlipped = !this.isFlipped; }
 }
 
-export class StraightDuct extends DuctPart<'StraightDuct'> implements IStraightDuct {
-  length: number;
-
-  constructor(data: IStraightDuct) {
-    super(data, 'StraightDuct');
-    this.length = data.length;
+export class StraightDuctPart extends DuctPart<DuctPartType.Straight> {
+  constructor(data: IDuctPart<DuctPartType.Straight>) {
+    super(data);
   }
 
-  isPointInside(point: Point): boolean {
-    const dx = point.x - this.x;
-    const dy = point.y - this.y;
-    const rad = -this.rotation * Math.PI / 180;
-    const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
-    const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
-    return Math.abs(localX) <= this.length / 2 && Math.abs(localY) <= this.diameter / 2;
+  draw(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rotation * Math.PI / 180);
+
+    const width = this.data.length;
+    const height = this.diameter;
+
+    ctx.fillStyle = this.color;
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2 / camera.zoom;
+    ctx.setLineDash([]);
+    ctx.fillRect(-width / 2, -height / 2, width, height);
+    ctx.strokeRect(-width / 2, -height / 2, width, height);
+
+    if (this.isSelected) {
+      ctx.strokeStyle = '#4f46e5';
+      ctx.lineWidth = 4 / camera.zoom;
+      ctx.strokeRect(-width / 2 - 5 / camera.zoom, -height / 2 - 5 / camera.zoom, width + 10 / camera.zoom, height + 10 / camera.zoom);
+    }
+
+    ctx.fillStyle = '#1e293b';
+    ctx.font = `${18 / camera.zoom}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const text = `${this.systemName} D${this.diameter} L${Math.round(this.data.length)}`;
+    const textMetrics = ctx.measureText(text);
+
+    const angle = (this.rotation % 360 + 360) % 360;
+    const isUpsideDown = angle > 90 && angle < 270;
+
+    ctx.save();
+    if (isUpsideDown) {
+      ctx.rotate(Math.PI);
+    }
+
+    if (textMetrics.width > width - 20 / camera.zoom) {
+      // Draw with leader line if text is too wide for the duct
+      ctx.beginPath();
+      ctx.moveTo(0, 0); // Start line from center
+      ctx.lineTo(60 / camera.zoom, height / 2 + 60 / camera.zoom); // End line diagonally down-right
+      ctx.lineTo(textMetrics.width / 2 + 70 / camera.zoom, height / 2 + 60 / camera.zoom); // Horizontal part
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 1 / camera.zoom;
+      ctx.stroke();
+
+      ctx.textAlign = 'left';
+      ctx.fillText(text, 70 / camera.zoom, height / 2 + 60 / camera.zoom);
+    } else {
+      // Draw text inside the duct
+      ctx.fillText(text, 0, 0);
+    }
+    ctx.restore();
+
+    this.drawCenterline(ctx, camera);
+    ctx.restore();
+  }
+
+  drawCenterline(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    ctx.beginPath();
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1 / camera.zoom;
+    ctx.setLineDash([5 / camera.zoom, 5 / camera.zoom]);
+    ctx.moveTo(-this.data.length / 2, 0);
+    ctx.lineTo(this.data.length / 2, 0);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   getConnectors(): Connector[] {
     const rad = this.rotation * Math.PI / 180;
-    const dx = Math.cos(rad) * this.length / 2;
-    const dy = Math.sin(rad) * this.length / 2;
+    const dx = Math.cos(rad) * this.data.length / 2;
+    const dy = Math.sin(rad) * this.data.length / 2;
     return [
-        { id: 0, x: this.x - dx, y: this.y - dy, angle: (this.rotation + 180) % 360, diameter: this.diameter },
-        { id: 1, x: this.x + dx, y: this.y + dy, angle: this.rotation, diameter: this.diameter }
+      { id: 0, x: this.x - dx, y: this.y - dy, angle: (this.rotation + 180) % 360, diameter: this.diameter },
+      { id: 1, x: this.x + dx, y: this.y + dy, angle: this.rotation, diameter: this.diameter }
     ];
+  }
+
+  getIntersectionPoints(): Point[] {
+    return [];
+  }
+
+  isPointInside(px: number, py: number): boolean {
+    const dx = px - this.x;
+    const dy = py - this.y;
+    const rad = -this.rotation * Math.PI / 180;
+    const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
+    return Math.abs(localX) <= this.data.length / 2 && Math.abs(localY) <= this.diameter / 2;
   }
 }
 
-export class Elbow90 extends DuctPart<'Elbow90'> implements IElbow90 {
-    legLength: number;
+export class ElbowDuctPart extends DuctPart<DuctPartType.Elbow> {
+  constructor(data: IDuctPart<DuctPartType.Elbow>) {
+    super(data);
+  }
 
-    constructor(data: IElbow90) {
-        super(data, 'Elbow90');
-        this.legLength = data.legLength;
+  draw(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rotation * Math.PI / 180);
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth = this.diameter;
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'miter';
+
+    ctx.beginPath();
+    ctx.moveTo(0, this.data.radius);
+    ctx.lineTo(0, 0);
+    ctx.lineTo(this.data.radius, 0);
+    ctx.stroke();
+
+    ctx.lineWidth = 2 / camera.zoom;
+    ctx.strokeStyle = '#1e293b';
+    ctx.stroke();
+
+    if (this.isSelected) {
+      ctx.strokeStyle = '#4f46e5';
+      ctx.lineWidth = (this.diameter + 8) / camera.zoom;
+      ctx.globalAlpha = 0.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, this.data.radius);
+      ctx.lineTo(0, 0);
+      ctx.lineTo(this.data.radius, 0);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
     }
 
-    isPointInside(point: Point): boolean {
-        const dx = point.x - this.x;
-        const dy = point.y - this.y;
-        const rad = -this.rotation * Math.PI / 180;
-        const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
-        const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
-        
-        const leg1 = (localX >= -this.diameter/2 && localX <= this.diameter/2 && localY >= 0 && localY <= this.legLength);
-        const leg2 = (localY >= -this.diameter/2 && localY <= this.diameter/2 && localX >= 0 && localX <= this.legLength);
-        
-        return leg1 || leg2;
+    ctx.fillStyle = '#1e293b';
+    ctx.font = `${16 / camera.zoom}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    const text = `D${this.diameter} R:${this.data.radius}`;
+
+    // Text on horizontal leg
+    const angle1 = (this.rotation % 360 + 360) % 360;
+    const isUpsideDown1 = angle1 > 90 && angle1 < 270;
+    ctx.save();
+    if (isUpsideDown1) {
+      ctx.rotate(Math.PI);
     }
+    ctx.fillText(text, this.data.radius / 2, -this.diameter / 2 - 5 / camera.zoom);
+    ctx.restore();
 
-    getConnectors(): Connector[] {
-        const rad = this.rotation * Math.PI / 180;
-        const cos = Math.cos(rad);
-        const sin = Math.sin(rad);
-        
-        const c1_local = { x: 0, y: this.legLength };
-        const c2_local = { x: this.legLength, y: 0 };
-
-        const rotate = (p: Point) => ({
-            x: this.x + p.x * cos - p.y * sin,
-            y: this.y + p.x * sin + p.y * cos
-        });
-
-        return [
-            { id: 0, ...rotate(c1_local), angle: (this.rotation + 270) % 360, diameter: this.diameter },
-            { id: 1, ...rotate(c2_local), angle: this.rotation, diameter: this.diameter }
-        ];
+    // Text on vertical leg
+    const angle2 = ((this.rotation + 270) % 360 + 360) % 360;
+    const isUpsideDown2 = angle2 > 90 && angle2 < 270;
+    ctx.save();
+    ctx.translate(0, this.data.radius);
+    ctx.rotate(-Math.PI / 2);
+    if (isUpsideDown2) {
+      ctx.rotate(Math.PI);
     }
+    ctx.fillText(text, this.data.radius / 2, -this.diameter / 2 - 5 / camera.zoom);
+    ctx.restore();
+
+    this.drawCenterline(ctx, camera);
+    ctx.restore();
+  }
+
+  drawCenterline(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    ctx.beginPath();
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1 / camera.zoom;
+    ctx.setLineDash([5 / camera.zoom, 5 / camera.zoom]);
+    ctx.moveTo(0, this.data.radius);
+    ctx.lineTo(0, 0);
+    ctx.lineTo(this.data.radius, 0);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  getConnectors(): Connector[] {
+    const rad = this.rotation * Math.PI / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    const c1_local = { x: 0, y: this.data.radius };
+    const c2_local = { x: this.data.radius, y: 0 };
+
+    const rotate = (p: Point) => ({
+      x: this.x + p.x * cos - p.y * sin,
+      y: this.y + p.x * sin + p.y * cos
+    });
+
+    return [
+      { id: 0, ...rotate(c1_local), angle: (this.rotation + 270) % 360, diameter: this.diameter },
+      { id: 1, ...rotate(c2_local), angle: this.rotation, diameter: this.diameter }
+    ];
+  }
+
+  getIntersectionPoints(): Point[] {
+    return [{ x: this.x, y: this.y }];
+  }
+
+  isPointInside(px: number, py: number): boolean {
+    const dx = px - this.x;
+    const dy = py - this.y;
+    const rad = -this.rotation * Math.PI / 180;
+    const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+    const leg1 = (localX >= -this.diameter / 2 && localX <= this.diameter / 2 && localY >= 0 && localY <= this.data.radius);
+    const leg2 = (localY >= -this.diameter / 2 && localY <= this.diameter / 2 && localX >= 0 && localX <= this.data.radius);
+
+    return leg1 || leg2;
+  }
 }
 
-export class AdjustableElbow extends DuctPart<'AdjustableElbow'> implements IAdjustableElbow {
-    legLength: number;
-    angle: number;
+export class ReducerDuctPart extends DuctPart<DuctPartType.Reducer> {
+  constructor(data: IDuctPart<DuctPartType.Reducer>) {
+    super(data);
+  }
 
-    constructor(data: IAdjustableElbow) {
-        super(data, 'AdjustableElbow');
-        this.legLength = data.legLength;
-        this.angle = data.angle;
+  draw(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rotation * Math.PI / 180);
+    ctx.setLineDash([]);
+
+    const halfLen = this.data.length / 2;
+    const d1_half = this.data.startDiameter / 2;
+    const d2_half = this.data.endDiameter / 2;
+
+    ctx.fillStyle = this.color;
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2 / camera.zoom;
+
+    ctx.beginPath();
+    ctx.moveTo(-halfLen, -d1_half);
+    ctx.lineTo(halfLen, -d2_half);
+    ctx.lineTo(halfLen, d2_half);
+    ctx.lineTo(-halfLen, d1_half);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    if (this.isSelected) {
+      ctx.strokeStyle = '#4f46e5';
+      ctx.lineWidth = 4 / camera.zoom;
+      ctx.stroke();
     }
 
-    isPointInside(point: Point): boolean {
-        const dx = point.x - this.x;
-        const dy = point.y - this.y;
-        const rad = -this.rotation * Math.PI / 180;
-        const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
-        const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
+    ctx.fillStyle = '#1e293b';
+    ctx.font = `${16 / camera.zoom}px sans-serif`;
+    ctx.textAlign = 'center';
 
-        const angle = this.isFlipped ? -this.angle : this.angle;
-        const angleRad = angle * Math.PI / 180;
+    const angle = (this.rotation % 360 + 360) % 360;
+    const isUpsideDown = angle > 90 && angle < 270;
 
-        const leg1_end = { x: this.legLength * Math.cos(-angleRad / 2), y: -this.legLength * Math.sin(-angleRad / 2) };
-        const leg2_end = { x: this.legLength * Math.cos(angleRad / 2), y: -this.legLength * Math.sin(angleRad / 2) };
+    ctx.save();
+    if (isUpsideDown) {
+      ctx.rotate(Math.PI);
+    }
+    ctx.fillText(`D${this.data.startDiameter}-${this.data.endDiameter} L:${this.data.length}`, 0, Math.max(d1_half, d2_half) + 15 / camera.zoom);
+    ctx.restore();
 
-        const distToSegment = (p: Point, v: Point, w: Point) => {
-            const l2 = (w.x - v.x)**2 + (w.y - v.y)**2;
-            if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
-            let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
-            t = Math.max(0, Math.min(1, t));
-            const projection = { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) };
-            return Math.hypot(p.x - projection.x, p.y - projection.y);
-        };
+    this.drawCenterline(ctx, camera);
+    ctx.restore();
+  }
 
-        const origin = { x: 0, y: 0 };
-        const p_local = { x: localX, y: localY };
+  drawCenterline(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    ctx.beginPath();
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1 / camera.zoom;
+    ctx.setLineDash([5 / camera.zoom, 5 / camera.zoom]);
+    ctx.moveTo(-this.data.length / 2, 0);
+    ctx.lineTo(this.data.length / 2, 0);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 
-        const inLeg1 = distToSegment(p_local, origin, leg1_end) <= this.diameter / 2;
-        const inLeg2 = distToSegment(p_local, origin, leg2_end) <= this.diameter / 2;
-        
-        return inLeg1 || inLeg2;
+  getConnectors(): Connector[] {
+    const rad = this.rotation * Math.PI / 180;
+    const dx = Math.cos(rad) * this.data.length / 2;
+    const dy = Math.sin(rad) * this.data.length / 2;
+    return [
+      { id: 0, x: this.x - dx, y: this.y - dy, angle: (this.rotation + 180) % 360, diameter: this.data.startDiameter },
+      { id: 1, x: this.x + dx, y: this.y + dy, angle: this.rotation, diameter: this.data.endDiameter }
+    ];
+  }
+
+  getIntersectionPoints(): Point[] {
+    return [];
+  }
+
+  flip(): void {
+    [this.data.startDiameter, this.data.endDiameter] = [this.data.endDiameter, this.data.startDiameter];
+  }
+
+  isPointInside(px: number, py: number): boolean {
+    const dx = px - this.x;
+    const dy = py - this.y;
+    const rad = -this.rotation * Math.PI / 180;
+    const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+    const maxDiameter = Math.max(this.data.startDiameter, this.data.endDiameter);
+
+    if (Math.abs(localX) > this.data.length / 2 || Math.abs(localY) > maxDiameter / 2) {
+      return false;
     }
 
-    getConnectors(): Connector[] {
-        const rad = this.rotation * Math.PI / 180;
-        const angle = this.isFlipped ? -this.angle : this.angle;
-        const angleRad = angle * Math.PI / 180;
-        
-        const c1_local = { 
-            x: this.legLength * Math.cos(-angleRad / 2),
-            y: -this.legLength * Math.sin(-angleRad / 2)
-        };
-        const c2_local = {
-            x: this.legLength * Math.cos(angleRad / 2),
-            y: -this.legLength * Math.sin(angleRad / 2)
-        };
+    // Calculate the expected half-diameter at localX
+    const slope = (this.data.endDiameter - this.data.startDiameter) / this.data.length;
+    const expectedDiameterAtX = this.data.startDiameter + slope * (localX + this.data.length / 2);
 
-        const rotate = (p: Point) => ({
-            x: this.x + p.x * Math.cos(rad) - p.y * Math.sin(rad),
-            y: this.y + p.x * Math.sin(rad) + p.y * Math.cos(rad)
-        });
-
-        return [
-            { id: 0, ...rotate(c1_local), angle: (this.rotation + 180 + angle / 2) % 360, diameter: this.diameter },
-            { id: 1, ...rotate(c2_local), angle: (this.rotation - angle / 2 + 360) % 360, diameter: this.diameter }
-        ];
-    }
+    return Math.abs(localY) <= expectedDiameterAtX / 2;
+  }
 }
 
-export class TeeReducer extends DuctPart<'TeeReducer'> implements ITeeReducer {
-    length: number;
-    branchLength: number;
-    diameter2: number;
-    diameter3: number;
-    intersectionOffset: number;
+export class BranchDuctPart extends DuctPart<DuctPartType.Branch> {
+  constructor(data: IDuctPart<DuctPartType.Branch>) {
+    super(data);
+  }
 
-    constructor(data: ITeeReducer) {
-        super(data, 'TeeReducer');
-        this.length = data.length;
-        this.branchLength = data.branchLength;
-        this.diameter2 = data.diameter2;
-        this.diameter3 = data.diameter3;
-        this.intersectionOffset = data.intersectionOffset;
+  draw(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rotation * Math.PI / 180);
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2 / camera.zoom;
+
+    const branchY = this.isFlipped ? this.data.branchLength : -this.data.branchLength;
+    const branchTextY = this.isFlipped ? this.data.branchLength / 2 : -this.data.branchLength / 2;
+    const branchTextRot = this.isFlipped ? Math.PI / 2 : -Math.PI / 2;
+
+    // Apply intersection offset for branch
+    ctx.save();
+    ctx.translate(this.data.intersectionOffset, 0);
+    ctx.fillStyle = getColorForDiameter(this.data.branchDiameter);
+    ctx.fillRect(-this.data.branchDiameter / 2, 0, this.data.branchDiameter, branchY);
+    ctx.strokeRect(-this.data.branchDiameter / 2, 0, this.data.branchDiameter, branchY);
+    ctx.restore();
+
+    ctx.fillStyle = this.color;
+    ctx.fillRect(-this.data.mainLength / 2, -this.data.mainDiameter / 2, this.data.mainLength, this.data.mainDiameter);
+    ctx.strokeRect(-this.data.mainLength / 2, -this.data.mainDiameter / 2, this.data.mainLength, this.data.mainDiameter);
+
+    if (this.isSelected) {
+      ctx.strokeStyle = '#4f46e5';
+      ctx.lineWidth = 4 / camera.zoom;
+      const b = this.getBounds();
+      ctx.strokeRect(b.x, b.y, b.w, b.h);
     }
 
-    isPointInside(point: Point): boolean {
-        const dx = point.x - this.x;
-        const dy = point.y - this.y;
-        const rad = -this.rotation * Math.PI / 180;
-        const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
-        const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
-        
-        const inMain = Math.abs(localY) <= this.diameter / 2 && Math.abs(localX) <= this.length / 2;
-        
-        const branchBottom = this.isFlipped ? 0 : -this.branchLength;
-        const branchTop = this.isFlipped ? this.branchLength : 0;
-        const inBranch = localY >= branchBottom && localY <= branchTop && Math.abs(localX - this.intersectionOffset) <= this.diameter3 / 2;
+    ctx.fillStyle = '#1e293b';
+    ctx.font = `${16 / camera.zoom}px sans-serif`;
+    ctx.textAlign = 'center';
 
-        return inMain || inBranch;
+    // Main pipe text
+    const mainAngle = (this.rotation % 360 + 360) % 360;
+    const mainIsUpsideDown = mainAngle > 90 && mainAngle < 270;
+
+    ctx.save();
+    if (mainIsUpsideDown) {
+      ctx.rotate(Math.PI);
     }
+    const leftLength = this.data.mainLength / 2 + this.data.intersectionOffset;
+    const rightLength = this.data.mainLength / 2 - this.data.intersectionOffset;
+    const leftTextX = (-this.data.mainLength / 2 + this.data.intersectionOffset) / 2;
+    const rightTextX = (this.data.intersectionOffset + this.data.mainLength / 2) / 2;
 
-    getConnectors(): Connector[] {
-        const rad = this.rotation * Math.PI / 180;
-        const cos = Math.cos(rad);
-        const sin = Math.sin(rad);
-        
-        const c1_local = { x: -this.length / 2, y: 0 };
-        const c2_local = { x: this.length / 2, y: 0 };
-        const c3_local = { x: this.intersectionOffset, y: this.isFlipped ? this.branchLength : -this.branchLength };
-        const c3_angle = this.isFlipped ? (this.rotation + 90) % 360 : (this.rotation - 90 + 360) % 360;
+    ctx.textBaseline = mainIsUpsideDown ? 'bottom' : 'top';
+    ctx.fillText(`L:${leftLength.toFixed(1)}`, leftTextX, this.data.mainDiameter / 2 + 5 / camera.zoom);
+    ctx.fillText(`L:${rightLength.toFixed(1)}`, rightTextX, this.data.mainDiameter / 2 + 5 / camera.zoom);
 
-        const rotate = (p: Point) => ({
-            x: this.x + p.x * cos - p.y * sin,
-            y: this.y + p.x * sin + p.y * cos
-        });
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`D${this.data.mainDiameter}-${this.data.mainOutletDiameter}`, 0, 0);
+    ctx.restore();
 
-        return [
-            { id: 0, ...rotate(c1_local), angle: (this.rotation + 180) % 360, diameter: this.diameter, type: 'main' },
-            { id: 1, ...rotate(c2_local), angle: this.rotation, diameter: this.diameter2, type: 'main' },
-            { id: 2, ...rotate(c3_local), angle: c3_angle, diameter: this.diameter3, type: 'branch' }
-        ];
+    // Branch pipe text
+    const branchAngle = (this.rotation + (this.isFlipped ? 90 : 270)) % 360;
+    const branchIsUpsideDown = ((branchAngle % 360 + 360) % 360 > 90 && (branchAngle % 360 + 360) % 360 < 270);
+
+    ctx.save();
+    ctx.translate(this.data.intersectionOffset, branchTextY);
+    ctx.rotate(branchTextRot);
+    if (branchIsUpsideDown) {
+      ctx.rotate(Math.PI);
     }
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`D${this.data.branchDiameter} L:${this.data.branchLength}`, 0, -this.data.branchDiameter / 2 - 5 / camera.zoom);
+    ctx.restore();
+
+    this.drawCenterline(ctx, camera);
+    ctx.restore();
+  }
+
+  drawCenterline(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    const branchY = this.isFlipped ? this.data.branchLength : -this.data.branchLength;
+    ctx.beginPath();
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1 / camera.zoom;
+    ctx.setLineDash([5 / camera.zoom, 5 / camera.zoom]);
+    ctx.moveTo(-this.data.mainLength / 2, 0);
+    ctx.lineTo(this.data.mainLength / 2, 0);
+    ctx.moveTo(this.data.intersectionOffset, 0);
+    ctx.lineTo(this.data.intersectionOffset, branchY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  getBounds(): { x: number; y: number; w: number; h: number } {
+    const branchY = this.isFlipped ? 0 : -this.data.branchLength;
+    const branchH = this.data.branchLength;
+
+    const main = { x: -this.data.mainLength / 2, y: -this.data.mainDiameter / 2, w: this.data.mainLength, h: this.data.mainDiameter };
+    const branch = { x: this.data.intersectionOffset - this.data.branchDiameter / 2, y: branchY, w: this.data.branchDiameter, h: branchH };
+
+    const minX = Math.min(main.x, branch.x);
+    const minY = Math.min(main.y, branch.y);
+    const maxX = Math.max(main.x + main.w, branch.x + branch.w);
+    const maxY = Math.max(main.y + main.h, branch.y + branch.h);
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }
+
+  getConnectors(): Connector[] {
+    const rad = this.rotation * Math.PI / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    const c1_local = { x: -this.data.mainLength / 2, y: 0 };
+    const c2_local = { x: this.data.mainLength / 2, y: 0 };
+    const c3_local = { x: this.data.intersectionOffset, y: this.isFlipped ? this.data.branchLength : -this.data.branchLength };
+    const c3_angle = this.isFlipped ? (this.rotation + 90) % 360 : (this.rotation - 90 + 360) % 360;
+
+
+    const rotate = (p: Point) => ({
+      x: this.x + p.x * cos - p.y * sin,
+      y: this.y + p.x * sin + p.y * cos
+    });
+
+    return [
+      { id: 0, ...rotate(c1_local), angle: (this.rotation + 180) % 360, diameter: this.data.mainDiameter, type: 'main' },
+      { id: 1, ...rotate(c2_local), angle: this.rotation, diameter: this.data.mainOutletDiameter, type: 'main' },
+      { id: 2, ...rotate(c3_local), angle: c3_angle, diameter: this.data.branchDiameter, type: 'branch' }
+    ];
+  }
+
+  getIntersectionPoints(): Point[] {
+    const rad = this.rotation * Math.PI / 180;
+    const cos_rad = Math.cos(rad);
+    const sin_rad = Math.sin(rad);
+    const intersection_x = this.x + this.data.intersectionOffset * cos_rad;
+    const intersection_y = this.y + this.data.intersectionOffset * sin_rad;
+    return [{ x: intersection_x, y: intersection_y }];
+  }
+
+  isPointInside(px: number, py: number): boolean {
+    const dx = px - this.x;
+    const dy = py - this.y;
+    const rad = -this.rotation * Math.PI / 180;
+    const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+    const inMain = Math.abs(localY) <= this.data.mainDiameter / 2 && Math.abs(localX) <= this.data.mainLength / 2;
+
+    const branchBottom = this.isFlipped ? 0 : -this.data.branchLength;
+    const branchTop = this.isFlipped ? this.data.branchLength : 0;
+    const inBranch = localY >= branchBottom && localY <= branchTop && Math.abs(localX - this.data.intersectionOffset) <= this.data.branchDiameter / 2;
+
+    return inMain || inBranch;
+  }
 }
 
-export class YBranch<T extends 'YBranch' | 'YBranchReducer'> extends DuctPart<T> implements IYBranch<T> {
-    length: number;
-    angle: number;
-    branchLength: number;
-    intersectionOffset: number;
+export class CapDuctPart extends DuctPart<DuctPartType.Cap> {
+  constructor(data: IDuctPart<DuctPartType.Cap>) {
+    super(data);
+  }
 
-    constructor(data: IYBranch<T>, type: T) {
-        super(data, type);
-        this.length = data.length;
-        this.angle = data.angle;
-        this.branchLength = data.branchLength;
-        this.intersectionOffset = data.intersectionOffset;
+  draw(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rotation * Math.PI / 180);
+    ctx.setLineDash([]);
+
+    const radius = this.diameter / 2;
+
+    ctx.fillStyle = this.color;
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2 / camera.zoom;
+
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.stroke();
+
+    if (this.isSelected) {
+      ctx.strokeStyle = '#4f46e5';
+      ctx.lineWidth = 4 / camera.zoom;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 5 / camera.zoom, 0, 2 * Math.PI);
+      ctx.stroke();
     }
 
-    isPointInside(point: Point): boolean {
-        const dx = point.x - this.x;
-        const dy = point.y - this.y;
-        const rad = -this.rotation * Math.PI / 180;
-        const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
-        const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
+    ctx.fillStyle = '#1e293b';
+    ctx.font = `${16 / camera.zoom}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`Cap D${this.diameter}`, 0, 0);
 
-        const inMain = (localX >= -this.length / 2 && localX <= this.length / 2 &&
-                        localY >= -this.diameter / 2 && localY <= this.diameter / 2);
+    this.drawCenterline(ctx, camera);
+    ctx.restore();
+  }
 
-        const angle = this.isFlipped ? -this.angle : this.angle;
-        const branchAngleRad = -angle * Math.PI / 180;
-        const branchCos = Math.cos(branchAngleRad);
-        const branchSin = Math.sin(branchAngleRad);
+  drawCenterline(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    // Cap has no centerline
+  }
 
-        const relX = localX - this.intersectionOffset;
-        const relY = localY;
+  getConnectors(): Connector[] {
+    return []; // Cap has no connectors
+  }
 
-        const branchLocalX = relX * branchCos + relY * branchSin;
-        const branchLocalY = -relX * branchSin + relY * branchCos;
-        
-        const inBranch = (branchLocalX >= 0 && branchLocalX <= this.branchLength &&
-                          branchLocalY >= -this.diameter / 2 && branchLocalY <= this.diameter / 2);
+  getIntersectionPoints(): Point[] {
+    return [{ x: this.x, y: this.y }];
+  }
 
-        return inMain || inBranch;
-    }
-
-    getConnectors(): Connector[] {
-        const rad = this.rotation * Math.PI / 180;
-        const cos_rad = Math.cos(rad);
-        const sin_rad = Math.sin(rad);
-
-        const angle = this.isFlipped ? -this.angle : this.angle;
-
-        const c1_local = { x: -this.length / 2, y: 0 };
-        const c2_local = { x: this.length / 2, y: 0 };
-        const c3_local_unrotated = {
-             x: this.branchLength * Math.cos(-angle * Math.PI / 180),
-             y: this.branchLength * Math.sin(-angle * Math.PI / 180)
-        };
-        const c3_local = {
-            x: this.intersectionOffset + c3_local_unrotated.x,
-            y: c3_local_unrotated.y
-        };
-        
-        const rotate = (p: Point) => ({
-            x: this.x + p.x * cos_rad - p.y * sin_rad,
-            y: this.y + p.x * sin_rad + p.y * cos_rad
-        });
-
-        return [
-            { id: 0, ...rotate(c1_local), angle: (this.rotation + 180) % 360, diameter: this.diameter, type: 'main' },
-            { id: 1, ...rotate(c2_local), angle: this.rotation % 360, diameter: this.diameter, type: 'main' },
-            { id: 2, ...rotate(c3_local), angle: (this.rotation - angle + 360) % 360, diameter: this.diameter, type: 'branch' }
-        ];
-    }
+  isPointInside(px: number, py: number): boolean {
+    const dx = px - this.x;
+    const dy = py - this.y;
+    const distance = Math.hypot(dx, dy);
+    return distance <= this.diameter / 2;
+  }
 }
 
-export class YBranchReducer extends YBranch<'YBranchReducer'> implements IYBranchReducer {
-    diameter2: number;
-    diameter3: number;
+export class TeeDuctPart extends DuctPart<DuctPartType.Tee> {
+  constructor(data: IDuctPart<DuctPartType.Tee>) {
+    super(data);
+  }
 
-    constructor(data: IYBranchReducer) {
-        super(data, 'YBranchReducer');
-        this.diameter2 = data.diameter2;
-        this.diameter3 = data.diameter3;
+  draw(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rotation * Math.PI / 180);
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2 / camera.zoom;
+
+    // Main pipe
+    ctx.fillStyle = getColorForDiameter(this.data.mainDiameter);
+    ctx.fillRect(-this.data.mainLength / 2, -this.data.mainDiameter / 2, this.data.mainLength, this.data.mainDiameter);
+    ctx.strokeRect(-this.data.mainLength / 2, -this.data.mainDiameter / 2, this.data.mainLength, this.data.mainDiameter);
+
+    // Branch pipe
+    ctx.fillStyle = getColorForDiameter(this.data.branchDiameter);
+    ctx.fillRect(-this.data.branchDiameter / 2, -this.data.branchLength / 2, this.data.branchDiameter, this.data.branchLength);
+    ctx.strokeRect(-this.data.branchDiameter / 2, -this.data.branchLength / 2, this.data.branchDiameter, this.data.branchLength);
+
+
+    if (this.isSelected) {
+      ctx.strokeStyle = '#4f46e5';
+      ctx.lineWidth = 4 / camera.zoom;
+      // Simplified bounds for selection
+      const maxDim = Math.max(this.data.mainDiameter, this.data.branchDiameter, this.data.mainLength, this.data.branchLength);
+      ctx.strokeRect(-maxDim / 2 - 5 / camera.zoom, -maxDim / 2 - 5 / camera.zoom, maxDim + 10 / camera.zoom, maxDim + 10 / camera.zoom);
     }
 
-    getConnectors(): Connector[] {
-        const baseConnectors = super.getConnectors();
-        baseConnectors[1].diameter = this.diameter2;
-        baseConnectors[2].diameter = this.diameter3;
-        return baseConnectors;
-    }
+    ctx.fillStyle = '#1e293b';
+    ctx.font = `${16 / camera.zoom}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`Tee D${this.data.mainDiameter}x${this.data.branchDiameter}`, 0, 0);
+
+    this.drawCenterline(ctx, camera);
+    ctx.restore();
+  }
+
+  drawCenterline(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    ctx.beginPath();
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1 / camera.zoom;
+    ctx.setLineDash([5 / camera.zoom, 5 / camera.zoom]);
+    ctx.moveTo(-this.data.mainLength / 2, 0);
+    ctx.lineTo(this.data.mainLength / 2, 0);
+    ctx.moveTo(0, -this.data.branchLength / 2);
+    ctx.lineTo(0, this.data.branchLength / 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  getConnectors(): Connector[] {
+    const rad = this.rotation * Math.PI / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    const c1_local = { x: -this.data.mainLength / 2, y: 0 };
+    const c2_local = { x: this.data.mainLength / 2, y: 0 };
+    const c3_local = { x: 0, y: -this.data.branchLength / 2 };
+    const c4_local = { x: 0, y: this.data.branchLength / 2 };
+
+    const rotate = (p: Point) => ({
+      x: this.x + p.x * cos - p.y * sin,
+      y: this.y + p.x * sin + p.y * cos
+    });
+
+    return [
+      { id: 0, ...rotate(c1_local), angle: (this.rotation + 180) % 360, diameter: this.data.mainDiameter },
+      { id: 1, ...rotate(c2_local), angle: this.rotation, diameter: this.data.mainDiameter },
+      { id: 2, ...rotate(c3_local), angle: (this.rotation + 270) % 360, diameter: this.data.branchDiameter },
+      { id: 3, ...rotate(c4_local), angle: (this.rotation + 90) % 360, diameter: this.data.branchDiameter }
+    ];
+  }
+
+  getIntersectionPoints(): Point[] {
+    return [{ x: this.x, y: this.y }];
+  }
+
+  isPointInside(px: number, py: number): boolean {
+    const dx = px - this.x;
+    const dy = py - this.y;
+    const rad = -this.rotation * Math.PI / 180;
+    const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+    const inMain = Math.abs(localX) <= this.data.mainLength / 2 && Math.abs(localY) <= this.data.mainDiameter / 2;
+    const inBranch = Math.abs(localY) <= this.data.branchLength / 2 && Math.abs(localX) <= this.data.branchDiameter / 2;
+
+    return inMain || inBranch;
+  }
 }
 
-export class Reducer extends DuctPart<'Reducer'> implements IReducer {
-    length: number;
-    diameter2: number;
-
-    constructor(data: IReducer) {
-        super(data, 'Reducer');
-        this.length = data.length;
-        this.diameter2 = data.diameter2;
-    }
-
-    isPointInside(point: Point): boolean {
-        const dx = point.x - this.x;
-        const dy = point.y - this.y;
-        const rad = -this.rotation * Math.PI / 180;
-        const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
-        const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
-
-        const maxDiameter = Math.max(this.diameter, this.diameter2);
-
-        if (Math.abs(localX) > this.length / 2 || Math.abs(localY) > maxDiameter / 2) {
-            return false;
-        }
-
-        const slope = (this.diameter2 - this.diameter) / this.length;
-        const expectedDiameterAtX = this.diameter + slope * (localX + this.length / 2);
-        
-        return Math.abs(localY) <= expectedDiameterAtX / 2;
-    }
-
-    getConnectors(): Connector[] {
-        const rad = this.rotation * Math.PI / 180;
-        const dx = Math.cos(rad) * this.length / 2;
-        const dy = Math.sin(rad) * this.length / 2;
-        return [
-            { id: 0, x: this.x - dx, y: this.y - dy, angle: (this.rotation + 180) % 360, diameter: this.diameter },
-            { id: 1, x: this.x + dx, y: this.y + dy, angle: this.rotation, diameter: this.diameter2 }
-        ];
-    }
-}
-
-export class Damper extends DuctPart<'Damper'> implements IDamper {
-    length: number;
-
-    constructor(data: IDamper) {
-        super(data, 'Damper');
-        this.length = data.length;
-    }
-
-    isPointInside(point: Point): boolean {
-        const dx = point.x - this.x;
-        const dy = point.y - this.y;
-        const rad = -this.rotation * Math.PI / 180;
-        const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
-        const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
-        return Math.abs(localX) <= this.length / 2 && Math.abs(localY) <= this.diameter / 2;
-    }
-
-    getConnectors(): Connector[] {
-        const rad = this.rotation * Math.PI / 180;
-        const dx = Math.cos(rad) * this.length / 2;
-        const dy = Math.sin(rad) * this.length / 2;
-        return [
-            { id: 0, x: this.x - dx, y: this.y - dy, angle: (this.rotation + 180) % 360, diameter: this.diameter },
-            { id: 1, x: this.x + dx, y: this.y + dy, angle: this.rotation, diameter: this.diameter }
-        ];
-    }
-}
-
-
-// Factory function to create class instances from plain objects
-export function createDuctPart(data: AnyDuctPart): DuctPart<DuctType> | null {
-  switch (data.type) {
-    case 'StraightDuct':
-      return new StraightDuct(data);
-    case 'Elbow90':
-        return new Elbow90(data);
-    case 'AdjustableElbow':
-        return new AdjustableElbow(data);
-    case 'TeeReducer':
-        return new TeeReducer(data);
-    case 'YBranch':
-        return new YBranch(data as IYBranch<'YBranch'>, 'YBranch');
-    case 'YBranchReducer':
-        return new YBranchReducer(data as IYBranchReducer);
-    case 'Reducer':
-        return new Reducer(data);
-    case 'Damper':
-        return new Damper(data);
+export function createDuctPart(type: DuctPartType, data: Omit<IDuctPart<any>, 'type'>): DuctPart<any> {
+  const fullData: IDuctPart<any> = { ...data, type };
+  switch (type) {
+    case DuctPartType.Straight:
+      return new StraightDuctPart(fullData as IDuctPart<DuctPartType.Straight>);
+    case DuctPartType.Elbow:
+      return new ElbowDuctPart(fullData as IDuctPart<DuctPartType.Elbow>);
+    case DuctPartType.Reducer:
+      return new ReducerDuctPart(fullData as IDuctPart<DuctPartType.Reducer>);
+    case DuctPartType.Branch:
+      return new BranchDuctPart(fullData as IDuctPart<DuctPartType.Branch>);
+    case DuctPartType.Cap:
+      return new CapDuctPart(fullData as IDuctPart<DuctPartType.Cap>);
+    case DuctPartType.Tee:
+      return new TeeDuctPart(fullData as IDuctPart<DuctPartType.Tee>);
     default:
-      return null;
+      throw new Error(`Unknown duct part type: ${type}`);
   }
 }

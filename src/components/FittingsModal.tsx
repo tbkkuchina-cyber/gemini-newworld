@@ -1,7 +1,7 @@
 'use client';
 
 import { useDuctStoreContext } from "@/lib/store-provider";
-import { FittingItem } from "@/lib/types";
+import { FittingItem, DuctPartType, StraightDuctData, ElbowDuctData, BranchDuctData, ReducerDuctData, DamperDuctData, CapDuctData, TeeDuctData } from "@/lib/types";
 import { X, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -28,22 +28,88 @@ const FittingsModal = () => {
 
   if (!isOpen) return null;
 
-  const handleInputChange = (category: string, index: number, prop: keyof FittingItem, value: any) => {
+  const getCategoryHeaders = (items: FittingItem[]): string[] => {
+    const headers = new Set<string>(['name', 'type']);
+    items.forEach(item => {
+        Object.keys(item.data).forEach(key => headers.add(key));
+    });
+    return Array.from(headers);
+  };
+
+  const createDefaultFittingItem = (category: string): FittingItem => {
+    const baseItem = {
+      id: `${category}-${Date.now()}`,
+      name: 'New',
+      visible: true,
+    };
+
+    switch (category) {
+      case '90°エルボ':
+      case '45°エルボ':
+      case '可変角度エルボ':
+        return {
+          ...baseItem,
+          type: DuctPartType.Elbow,
+          data: { center: { x: 0, y: 0 }, startAngle: 0, endAngle: 90, radius: 100, diameter: 100, angle: 90 },
+        };
+      case 'T字管レジューサー':
+      case 'Y字管レジューサー':
+        return {
+          ...baseItem,
+          type: DuctPartType.Branch,
+          data: { mainLength: 200, mainDiameter: 100, mainOutletDiameter: 100, branchLength: 100, branchDiameter: 100, intersectionOffset: 0, angle: 0 },
+        };
+      case 'レジューサー':
+        return {
+          ...baseItem,
+          type: DuctPartType.Reducer,
+          data: { start: { x: 0, y: 0 }, end: { x: 150, y: 0 }, startDiameter: 100, endDiameter: 80, length: 150 },
+        };
+      case 'ダンパー':
+        return {
+          ...baseItem,
+          type: DuctPartType.Straight,
+          data: { length: 100, diameter: 100 },
+        };
+      case 'キャップ':
+        return {
+          ...baseItem,
+          type: DuctPartType.Cap,
+          data: { position: { x: 0, y: 0 }, diameter: 100 },
+        };
+      case 'T字管':
+        return {
+          ...baseItem,
+          type: DuctPartType.Tee,
+          data: { mainConnection: { x: 0, y: 0 }, branchConnection: { x: 0, y: 0 }, mainDiameter: 100, branchDiameter: 100, mainLength: 200, branchLength: 200 },
+        };
+      default:
+        return {
+          ...baseItem,
+          type: DuctPartType.Straight,
+          data: { start: { x: 0, y: 0 }, end: { x: 200, y: 0 }, diameter: 100, length: 200 },
+        };
+    }
+  };
+
+  const handleInputChange = (category: string, index: number, prop: string, value: any) => {
     const newFittings = { ...localFittings };
     const item = { ...newFittings[category][index] };
-    (item as any)[prop] = value;
+    if (prop === 'name' || prop === 'visible' || prop === 'type') {
+      (item as any)[prop] = value;
+    } else if (prop === 'data') { // Handle data as a whole object
+      item.data = value;
+    } else {
+      // Assume it's a data property
+      item.data = { ...item.data, [prop]: value };
+    }
     newFittings[category][index] = item;
     setLocalFittings(newFittings);
   };
 
   const handleAddRow = (category: string) => {
     const newFittings = { ...localFittings };
-    const newItem: FittingItem = {
-      id: `${category}-${Date.now()}`,
-      name: 'New',
-      diameter: 100,
-      visible: true,
-    };
+    const newItem: FittingItem = createDefaultFittingItem(category);
     newFittings[category] = [...newFittings[category], newItem];
     setLocalFittings(newFittings);
   };
@@ -52,16 +118,6 @@ const FittingsModal = () => {
     const newFittings = { ...localFittings };
     newFittings[category].splice(index, 1);
     setLocalFittings(newFittings);
-  };
-
-  const getCategoryHeaders = (items: FittingItem[]): (keyof FittingItem)[] => {
-    const headers = new Set<keyof FittingItem>(['name', 'diameter']);
-    items.forEach(item => {
-        Object.keys(item).forEach(key => headers.add(key as keyof FittingItem));
-    });
-    headers.delete('id');
-    headers.delete('visible');
-    return Array.from(headers);
   };
 
   const handleSaveChanges = () => {
@@ -89,7 +145,9 @@ const FittingsModal = () => {
                   <table className="w-full text-left table-auto">
                     <thead>
                       <tr>
-                        {headers.map(h => <th key={h} className="p-2 text-sm font-semibold">{h}</th>)}
+                        <th className="p-2 text-sm font-semibold">Name</th>
+                        <th className="p-2 text-sm font-semibold">Type</th>
+                        <th className="p-2 text-sm font-semibold">Data (JSON)</th>
                         <th className="p-2 text-sm font-semibold">Visible</th>
                         <th className="p-2 text-sm font-semibold">Actions</th>
                       </tr>
@@ -97,25 +155,36 @@ const FittingsModal = () => {
                     <tbody>
                       {items.map((item, index) => (
                         <tr key={item.id} className="border-t">
-                          {headers.map(header => (
-                            <td key={header} className="p-2">
-                              {typeof item[header] === 'boolean' ? (
-                                <input
-                                  type="checkbox"
-                                  checked={item[header] as boolean}
-                                  onChange={(e) => handleInputChange(category, index, header, e.target.checked)}
-                                  className="h-5 w-5 rounded"
-                                />
-                              ) : (
-                                <input 
-                                  type={typeof item[header] === 'number' ? 'number' : 'text'} 
-                                  value={item[header] || ''} 
-                                  onChange={(e) => handleInputChange(category, index, header, typeof item[header] === 'number' ? parseFloat(e.target.value) : e.target.value)} 
-                                  className="w-full p-1 border rounded min-w-[60px]" 
-                                />
-                              )}
-                            </td>
-                          ))}
+                          <td className="p-2">
+                            <input 
+                              type="text" 
+                              value={item.name} 
+                              onChange={(e) => handleInputChange(category, index, 'name', e.target.value)} 
+                              className="w-full p-1 border rounded min-w-[60px]" 
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input 
+                              type="text" 
+                              value={item.type} 
+                              readOnly 
+                              className="w-full p-1 border rounded min-w-[60px] bg-gray-100" 
+                            />
+                          </td>
+                          <td className="p-2">
+                            <textarea
+                              value={JSON.stringify(item.data, null, 2)}
+                              onChange={(e) => {
+                                try {
+                                  const parsedData = JSON.parse(e.target.value);
+                                  handleInputChange(category, index, 'data', parsedData);
+                                } catch (error) {
+                                  console.error("Invalid JSON for data:", error);
+                                }
+                              }}
+                              className="w-full p-1 border rounded min-w-[150px] h-20"
+                            />
+                          </td>
                           <td className="p-2 text-center">
                               <input type="checkbox" checked={item.visible} onChange={(e) => handleInputChange(category, index, 'visible', e.target.checked)} className="h-5 w-5 rounded" />
                           </td>

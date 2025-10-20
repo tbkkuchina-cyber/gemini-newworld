@@ -2,7 +2,7 @@
 
 import { useDuctStoreContext } from "@/lib/store-provider";
 import PaletteItem from "./PaletteItem";
-import { StraightDuct } from "@/lib/types";
+import { StraightDuct, DuctPartType } from "@/lib/types";
 import { useEffect, useState } from "react";
 
 const Palette = () => {
@@ -24,12 +24,18 @@ const Palette = () => {
     const newDuct: StraightDuct = {
       id: Date.now(),
       groupId: Date.now(),
-      type: 'StraightDuct',
+      type: DuctPartType.Straight,
       x: 0,
       y: 0,
-      length: 400,
-      diameter: 100, // Default or from input
+      data: {
+        start: { x: 0, y: 0 },
+        end: { x: 400, y: 0 },
+        length: 400,
+        diameter: 100,
+      },
+      name: '直管', // Add a default name
       rotation: 0,
+      diameter: 100, // Added here
       systemName: 'SA-1', // Default or from input
       isSelected: false,
       isFlipped: false,
