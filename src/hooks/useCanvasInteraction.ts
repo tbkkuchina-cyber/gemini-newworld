@@ -1,9 +1,24 @@
 import { RefObject, useEffect, useRef } from 'react';
-import { shallow } from 'zustand/shallow';
-import { useDuctStoreContext } from '@/lib/store-provider';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { getObjectAt, screenToWorld, worldToScreen, findNearestConnector } from '@/lib/canvas-utils';
 import { AnyDuctPart, DuctPartType, Point, IDuctPart } from '@/lib/types';
 import { createDuctPart } from '@/lib/duct-models';
+import {
+  cameraAtom,
+  objectsAtom,
+  modeAtom,
+  measurePointsAtom,
+  setCameraAtom,
+  selectObjectAtom,
+  addObjectAtom,
+  openContextMenuAtom,
+  closeContextMenuAtom,
+  addMeasurePointAtom,
+  clearMeasurePointsAtom,
+  setMouseWorldPosAtom,
+  openDimensionModalAtom,
+  mouseWorldPosAtom,
+} from '@/lib/jotai-store';
 
 const categoryToDuctType: Record<string, DuctPartType> = {
     '90°エルボ': DuctPartType.Elbow,
@@ -33,39 +48,30 @@ interface SnapResult {
 }
 
 export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) => {
-  const {
-    camera,
-    objects,
-    mode,
-    measurePoints,
-    setCamera,
-    selectObject,
-    moveObject,
-    addObject,
-    openContextMenu,
-    closeContextMenu,
-    mergeGroups,
-    addMeasurePoint,
-    clearMeasurePoints,
-    setMouseWorldPos,
-    openDimensionModal,
-  } = useDuctStoreContext((state) => ({
-    camera: state.camera,
-    objects: state.objects,
-    mode: state.mode,
-    measurePoints: state.measurePoints,
-    setCamera: state.setCamera,
-    selectObject: state.selectObject,
-    moveObject: state.moveObject,
-    addObject: state.addObject,
-    openContextMenu: state.openContextMenu,
-    closeContextMenu: state.closeContextMenu,
-    mergeGroups: state.mergeGroups,
-    addMeasurePoint: state.addMeasurePoint,
-    clearMeasurePoints: state.clearMeasurePoints,
-    setMouseWorldPos: state.setMouseWorldPos,
-    openDimensionModal: state.openDimensionModal,
-  }));
+  const camera = useAtomValue(cameraAtom);
+  const objects = useAtomValue(objectsAtom);
+  const mode = useAtomValue(modeAtom);
+  const measurePoints = useAtomValue(measurePointsAtom);
+
+  const setCamera = useSetAtom(setCameraAtom);
+  const selectObject = useSetAtom(selectObjectAtom);
+  const addObject = useSetAtom(addObjectAtom);
+  const openContextMenu = useSetAtom(openContextMenuAtom);
+  const closeContextMenu = useSetAtom(closeContextMenuAtom);
+  const addMeasurePoint = useSetAtom(addMeasurePointAtom);
+  const clearMeasurePoints = useSetAtom(clearMeasurePointsAtom);
+  const setMouseWorldPos = useSetAtom(mouseWorldPosAtom);
+  const openDimensionModal = useSetAtom(openDimensionModalAtom);
+  
+  // Actions that modify objects need to be handled carefully
+  const setObjects = useSetAtom(objectsAtom);
+  const moveObject = (objectId: number, newPosition: Point) => {
+    setObjects(prev => prev.map(o => o.id === objectId ? { ...o, x: newPosition.x, y: newPosition.y } : o));
+  };
+  const mergeGroups = (groupA_id: number, groupB_id: number) => {
+    if (groupA_id === groupB_id) return;
+    setObjects(prev => prev.map(o => o.groupId === groupB_id ? { ...o, groupId: groupA_id } : o));
+  };
 
   const isPanning = useRef(false);
   const dragState = useRef<DragState>({ isDragging: false, targetId: null, offset: { x: 0, y: 0 } });
@@ -278,5 +284,5 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
       canvas.removeEventListener('drop', handleDrop);
     };
 
-  }, [canvasRef, camera, objects, mode, measurePoints, addMeasurePoint, clearMeasurePoints, closeContextMenu, mergeGroups, moveObject, openContextMenu, selectObject, setCamera, setMouseWorldPos, openDimensionModal]);
+  }, [canvasRef, camera, objects, mode, measurePoints, setCamera, selectObject, moveObject, addObject, openContextMenu, closeContextMenu, mergeGroups, addMeasurePoint, clearMeasurePoints, setMouseWorldPos, openDimensionModal]);
 };

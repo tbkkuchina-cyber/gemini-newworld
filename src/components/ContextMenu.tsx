@@ -1,8 +1,16 @@
 'use client';
 
-import { useDuctStoreContext } from '@/lib/store-provider';
+import { useSetAtom, useAtomValue } from 'jotai';
 import { RotateCw, FlipHorizontal, Trash2, Link2Off } from 'lucide-react';
 import { DuctPartType } from '@/lib/types';
+import {
+  deleteSelectedObjectAtom,
+  rotateSelectedObjectAtom,
+  flipSelectedObjectAtom,
+  disconnectSelectedObjectAtom,
+  selectedObjectAtom,
+  objectsAtom
+} from '@/lib/jotai-store';
 
 interface ContextMenuProps {
   isOpen: boolean;
@@ -10,21 +18,12 @@ interface ContextMenuProps {
 }
 
 const ContextMenu = ({ isOpen, position }: ContextMenuProps) => {
-  const {
-    deleteSelectedObject,
-    rotateSelectedObject,
-    flipSelectedObject,
-    disconnectSelectedObject,
-    selectedObject,
-    objects,
-  } = useDuctStoreContext((state) => ({
-    deleteSelectedObject: state.deleteSelectedObject,
-    rotateSelectedObject: state.rotateSelectedObject,
-    flipSelectedObject: state.flipSelectedObject,
-    disconnectSelectedObject: state.disconnectSelectedObject,
-    selectedObject: state.objects.find(o => o.id === state.selectedObjectId),
-    objects: state.objects,
-  }));
+  const deleteSelectedObject = useSetAtom(deleteSelectedObjectAtom);
+  const rotateSelectedObject = useSetAtom(rotateSelectedObjectAtom);
+  const flipSelectedObject = useSetAtom(flipSelectedObjectAtom);
+  const disconnectSelectedObject = useSetAtom(disconnectSelectedObjectAtom);
+  const selectedObject = useAtomValue(selectedObjectAtom);
+  const objects = useAtomValue(objectsAtom);
 
   if (!isOpen || !selectedObject) return null;
 
@@ -39,16 +38,16 @@ const ContextMenu = ({ isOpen, position }: ContextMenuProps) => {
       className="absolute bg-white shadow-lg rounded-md p-1 flex items-center space-x-1 z-20"
       style={{ left: position.x, top: position.y }}
     >
-      <button onClick={rotateSelectedObject} title="回転 (R)" className="p-2 rounded-md hover:bg-gray-200">
+      <button onClick={() => rotateSelectedObject()} title="回転 (R)" className="p-2 rounded-md hover:bg-gray-200">
         <RotateCw size={20} />
       </button>
-      <button onClick={flipSelectedObject} title="反転" className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled={!isFlippable}>
+      <button onClick={() => flipSelectedObject()} title="反転" className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled={!isFlippable}>
         <FlipHorizontal size={20} />
       </button>
-      <button onClick={deleteSelectedObject} title="削除 (Delete)" className="p-2 rounded-md hover:bg-gray-200 text-red-600">
+      <button onClick={() => deleteSelectedObject()} title="削除 (Delete)" className="p-2 rounded-md hover:bg-gray-200 text-red-600">
         <Trash2 size={20} />
       </button>
-      <button onClick={disconnectSelectedObject} title="接合を解除" className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled={!isInGroup}>
+      <button onClick={() => disconnectSelectedObject()} title="接合を解除" className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled={!isInGroup}>
         <Link2Off size={20} />
       </button>
     </div>

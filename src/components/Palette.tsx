@@ -1,22 +1,14 @@
 'use client';
 
-import { useDuctStoreContext } from "@/lib/store-provider";
+import { useAtomValue, useSetAtom } from 'jotai';
 import PaletteItem from "./PaletteItem";
 import { StraightDuct, DuctPartType } from "@/lib/types";
-import { useEffect, useState } from "react";
+import { fittingsAtom, addObjectAtom, openFittingsModalAtom } from '@/lib/jotai-store';
 
 const Palette = () => {
-  const { fittings, addObject, openFittingsModal } = useDuctStoreContext((state) => ({
-    fittings: state.fittings,
-    addObject: state.addObject,
-    openFittingsModal: state.openFittingsModal,
-  }));
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
+  const fittings = useAtomValue(fittingsAtom);
+  const addObject = useSetAtom(addObjectAtom);
+  const openFittingsModal = useSetAtom(openFittingsModalAtom);
 
   const handleAddStraightDuct = () => {
     // This will add the duct to the center of the viewport later.
@@ -44,7 +36,7 @@ const Palette = () => {
   };
 
   return (
-    <aside id="palette" className="w-full md:w-64 bg-white shadow-lg p-4 overflow-y-auto order-last md:order-first">
+    <aside id="palette" className="w-full md:w-64 md:shrink-0 bg-white shadow-lg p-4 overflow-y-auto order-last md:order-first">
       <div className="mb-6">
         <div className="space-y-2">
           <div>
@@ -62,17 +54,19 @@ const Palette = () => {
       </div>
 
       <div className="mb-6 border-t pt-4">
-        <button onClick={openFittingsModal} className="w-full bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-md hover:bg-gray-300 transition-colors">
+        <button onClick={() => openFittingsModal()} className="w-full bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-md hover:bg-gray-300 transition-colors">
           継手管理
         </button>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        {isClient && Object.entries(fittings).map(([category, items]) => (
-          items.filter(item => item.visible).map(item => (
-            <PaletteItem key={item.id} item={item} type={category} />
-          ))
-        ))}
+        {Object.entries(fittings)
+            .sort(([catA], [catB]) => catA.localeCompare(catB)) // Sort by category name
+            .flatMap(([category, items]) =>
+              items
+                .filter((item) => item.visible)
+                .map((item) => <PaletteItem key={item.id} item={item} type={category} />)
+            )}
       </div>
     </aside>
   );

@@ -1,24 +1,22 @@
 import { useEffect, RefObject } from 'react';
-import { useDuctStoreContext } from '@/lib/store-provider';
-import { shallow } from 'zustand/shallow';
+import { useAtomValue } from 'jotai';
+import { 
+  objectsAtom, 
+  cameraAtom, 
+  modeAtom, 
+  measurePointsAtom, 
+  mouseWorldPosAtom, 
+  dimensionsAtom 
+} from '@/lib/jotai-store';
 import { drawGrid, drawObjects, drawConnectors, drawMeasureTool, drawDimensions } from '@/lib/canvas-utils';
 
 export const useCanvas = (canvasRef: RefObject<HTMLCanvasElement>) => {
-  const {
-    objects,
-    camera,
-    mode,
-    measurePoints,
-    mouseWorldPos,
-    dimensions,
-  } = useDuctStoreContext((state) => ({
-    objects: state.objects,
-    camera: state.camera,
-    mode: state.mode,
-    measurePoints: state.measurePoints,
-    mouseWorldPos: state.mouseWorldPos,
-    dimensions: state.dimensions,
-  }));
+  const objects = useAtomValue(objectsAtom);
+  const camera = useAtomValue(cameraAtom);
+  const mode = useAtomValue(modeAtom);
+  const measurePoints = useAtomValue(measurePointsAtom);
+  const mouseWorldPos = useAtomValue(mouseWorldPosAtom);
+  const dimensions = useAtomValue(dimensionsAtom);
 
   useEffect(() => {
     const canvas = canvasRef.current;

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { useDuctStoreContext } from '@/lib/store-provider';
+import { useSetAtom } from 'jotai';
+import { addDimensionAtom } from '@/lib/jotai-store';
 import { Dimension, SnapPoint } from '@/lib/types';
 
 interface DimensionModalProps {
@@ -12,7 +13,7 @@ interface DimensionModalProps {
 }
 
 const DimensionModal = ({ isOpen, onClose, content }: DimensionModalProps) => {
-  const addDimension = useDuctStoreContext((state) => state.addDimension);
+  const addDimension = useSetAtom(addDimensionAtom);
   const [distance, setDistance] = useState(0);
 
   useEffect(() => {

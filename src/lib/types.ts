@@ -153,5 +153,4 @@ export interface Connector extends Point {
 export interface ConfirmModalContent {
   title: string;
   message: string;
-  onConfirm: () => void;
 }

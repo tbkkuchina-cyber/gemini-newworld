@@ -1,24 +1,23 @@
 'use client';
 
-import { useDuctStoreContext } from "@/lib/store-provider";
-import { FittingItem, DuctPartType, StraightDuctData, ElbowDuctData, BranchDuctData, ReducerDuctData, DamperDuctData, CapDuctData, TeeDuctData } from "@/lib/types";
-import { X, Plus, Trash2 } from "lucide-react";
+import { useAtomValue, useSetAtom } from 'jotai';
 import { useEffect, useState } from "react";
+import { X, Plus, Trash2 } from "lucide-react";
+import { FittingItem, DuctPartType } from "@/lib/types";
+import {
+  isFittingsModalOpenAtom,
+  closeFittingsModalAtom,
+  fittingsAtom,
+  setFittingsAtom,
+  saveFittingsAtom
+} from '@/lib/jotai-store';
 
 const FittingsModal = () => {
-  const {
-    isOpen,
-    onClose,
-    fittings: globalFittings,
-    setFittings,
-    saveFittings,
-  } = useDuctStoreContext((state) => ({
-    isOpen: state.isFittingsModalOpen,
-    onClose: state.closeFittingsModal,
-    fittings: state.fittings,
-    setFittings: state.setFittings,
-    saveFittings: state.saveFittings,
-  }));
+  const isOpen = useAtomValue(isFittingsModalOpenAtom);
+  const onClose = useSetAtom(closeFittingsModalAtom);
+  const globalFittings = useAtomValue(fittingsAtom);
+  const setFittings = useSetAtom(setFittingsAtom);
+  const saveFittings = useSetAtom(saveFittingsAtom);
 
   const [localFittings, setLocalFittings] = useState(globalFittings);
 

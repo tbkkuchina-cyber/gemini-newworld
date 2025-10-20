@@ -1,40 +1,41 @@
 'use client';
 
 import { useEffect } from "react";
+import dynamic from 'next/dynamic';
+import { useAtomValue, useSetAtom } from 'jotai';
 import CanvasArea from "@/components/CanvasArea";
 import ConfirmModal from "@/components/ConfirmModal";
 import ContextMenu from "@/components/ContextMenu";
 import DimensionModal from "@/components/DimensionModal";
 import FittingsModal from "@/components/FittingsModal";
-import Palette from "@/components/Palette";
 import Toolbar from "@/components/Toolbar";
-import { useDuctStoreContext } from "@/lib/store-provider";
-import { shallow } from 'zustand/shallow';
+// import Palette from "@/components/Palette"; // Import statically
+import {
+  isConfirmModalOpenAtom,
+  confirmModalContentAtom,
+  closeConfirmModalAtom,
+  confirmActionAtom,
+  loadFittingsAtom,
+  isContextMenuOpenAtom,
+  contextMenuPositionAtom,
+  isDimensionModalOpenAtom,
+  dimensionModalContentAtom,
+  closeDimensionModalAtom
+} from "@/lib/jotai-store";
+
+const Palette = dynamic(() => import('@/components/Palette'), { ssr: false });
 
 const DuctCanvasApp = () => {
-  const {
-    isConfirmModalOpen,
-    confirmModalContent,
-    closeConfirmModal,
-    loadFittings,
-    isContextMenuOpen,
-    contextMenuPosition,
-    isDimensionModalOpen,
-    dimensionModalContent,
-    closeDimensionModal,
-    isFittingsModalOpen,
-  } = useDuctStoreContext((state) => ({
-    isConfirmModalOpen: state.isConfirmModalOpen,
-    confirmModalContent: state.confirmModalContent,
-    closeConfirmModal: state.closeConfirmModal,
-    loadFittings: state.loadFittings,
-    isContextMenuOpen: state.isContextMenuOpen,
-    contextMenuPosition: state.contextMenuPosition,
-    isDimensionModalOpen: state.isDimensionModalOpen,
-    dimensionModalContent: state.dimensionModalContent,
-    closeDimensionModal: state.closeDimensionModal,
-    isFittingsModalOpen: state.isFittingsModalOpen,
-  }));
+  const isConfirmModalOpen = useAtomValue(isConfirmModalOpenAtom);
+  const confirmModalContent = useAtomValue(confirmModalContentAtom);
+  const closeConfirmModal = useSetAtom(closeConfirmModalAtom);
+  const confirmAction = useAtomValue(confirmActionAtom);
+  const loadFittings = useSetAtom(loadFittingsAtom);
+  const isContextMenuOpen = useAtomValue(isContextMenuOpenAtom);
+  const contextMenuPosition = useAtomValue(contextMenuPositionAtom);
+  const isDimensionModalOpen = useAtomValue(isDimensionModalOpenAtom);
+  const dimensionModalContent = useAtomValue(dimensionModalContentAtom);
+  const closeDimensionModal = useSetAtom(closeDimensionModalAtom);
 
   useEffect(() => {
     loadFittings();
@@ -56,7 +57,7 @@ const DuctCanvasApp = () => {
       <ConfirmModal
         isOpen={isConfirmModalOpen}
         onClose={closeConfirmModal}
-        onConfirm={confirmModalContent.onConfirm}
+        onConfirm={confirmAction || (() => {})}
         title={confirmModalContent.title}
       >
         <p>{confirmModalContent.message}</p>
