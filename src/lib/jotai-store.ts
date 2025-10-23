@@ -1,14 +1,16 @@
 import { atom } from 'jotai';
-import { AnyDuctPart, Camera, Point, Fittings, ConfirmModalContent, Dimension, SnapPoint, FittingItem, DuctPartType } from './types';
+import { AnyDuctPart, Camera, Point, Fittings, ConfirmModalContent, Dimension, SnapPoint, FittingItem, DuctPartType, DragState } from './types';
 import { getDefaultFittings } from './default-fittings';
 
 const FITTINGS_STORAGE_KEY = 'ductAppFittings';
 
 // --- Primitive Atoms (The Source of Truth) ---
 export const objectsAtom = atom<AnyDuctPart[]>([]);
-export const cameraAtom = atom<Camera>({ x: 0, y: 0, zoom: 1 });
+export const cameraAtom = atom<Camera>({ x: 0, y: 0, zoom: 1 / (1.2 * 1.2) });
 export const selectedObjectIdAtom = atom<number | null>(null);
 export const modeAtom = atom<'pan' | 'measure'>('pan');
+export const isPanningAtom = atom<boolean>(false);
+export const dragStateAtom = atom<DragState>({ isDragging: false, targetId: null, offset: { x: 0, y: 0 } });
 export const isConfirmModalOpenAtom = atom<boolean>(false);
 export const confirmModalContentAtom = atom<ConfirmModalContent>({ title: '', message: '' });
 export const confirmActionAtom = atom<(() => void) | null>(null);

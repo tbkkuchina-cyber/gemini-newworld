@@ -154,3 +154,16 @@ export interface ConfirmModalContent {
   title: string;
   message: string;
 }
+
+export interface DragState {
+  isDragging: boolean;
+  targetId: number | null;
+  offset: Point;
+}
+
+export interface SnapResult {
+  dist: number;
+  dx: number;
+  dy: number;
+  otherObj: AnyDuctPart | null;
+}
