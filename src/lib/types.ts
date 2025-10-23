@@ -12,13 +12,19 @@ export interface Camera {
 export enum DuctPartType {
   Straight = 'Straight',
   Elbow = 'Elbow',
+  Elbow90 = 'Elbow90',
+  AdjustableElbow = 'AdjustableElbow',
+  TeeReducer = 'TeeReducer',
+  YBranch = 'YBranch',
+  YBranchReducer = 'YBranchReducer',
   Reducer = 'Reducer',
-  Branch = 'Branch',
+  Damper = 'Damper',
   Cap = 'Cap',
   Tee = 'Tee',
 }
 
-export interface IDuctPart<T extends DuctPartType, D = any> {
+// Base interface with common properties, now flat.
+export interface IDuctPart {
   id: number;
   groupId: number;
   x: number;
@@ -26,102 +32,103 @@ export interface IDuctPart<T extends DuctPartType, D = any> {
   rotation: number;
   diameter: number;
   systemName: string;
-  type: T;
+  type: DuctPartType;
   isSelected: boolean;
   isFlipped: boolean;
-  data: D;
   name: string;
 }
 
-export interface StraightDuctData {
-  start: Point;
-  end: Point;
-  diameter: number;
+// Specific interfaces extending the base type with their own properties.
+export interface StraightDuct extends IDuctPart {
+  type: DuctPartType.Straight;
   length: number;
 }
-export interface StraightDuct extends IDuctPart<DuctPartType.Straight, StraightDuctData> {}
 
-export interface ElbowDuctData {
-  center: Point;
-  startAngle: number;
-  endAngle: number;
-  radius: number;
-  diameter: number;
+export interface Damper extends IDuctPart {
+    type: DuctPartType.Damper;
+    length: number;
 }
-export interface ElbowDuct extends IDuctPart<DuctPartType.Elbow, ElbowDuctData> {}
 
-export interface AdjustableElbowDuctData {
-  center: Point;
-  startAngle: number;
-  endAngle: number;
-  radius: number;
-  diameter: number;
-  angle: number;
+export interface Elbow90 extends IDuctPart {
+    type: DuctPartType.Elbow90;
+    legLength: number;
 }
-export interface AdjustableElbowDuct extends IDuctPart<DuctPartType.Elbow, AdjustableElbowDuctData> {}
 
-export interface BranchDuctData {
-  mainLength: number;
-  mainDiameter: number;
-  mainOutletDiameter: number;
-  branchLength: number;
-  branchDiameter: number;
-  intersectionOffset: number;
+export interface AdjustableElbow extends IDuctPart {
+    type: DuctPartType.AdjustableElbow;
+    legLength: number;
+    angle: number;
 }
-export interface BranchDuct extends IDuctPart<DuctPartType.Branch, BranchDuctData> {}
 
-export interface YBranchDuctData {
-  mainLength: number;
-  mainDiameter: number;
-  mainOutletDiameter: number;
-  branchLength: number;
-  branchDiameter: number;
-  angle: number;
-  intersectionOffset: number;
+export interface TeeReducer extends IDuctPart {
+    type: DuctPartType.TeeReducer;
+    length: number;
+    branchLength: number;
+    diameter2: number; // Main outlet
+    diameter3: number; // Branch
+    intersectionOffset: number;
 }
-export interface YBranchDuct extends IDuctPart<DuctPartType.Branch, YBranchDuctData> {}
 
-export interface YBranchReducerDuct extends IDuctPart<DuctPartType.Branch, YBranchDuctData> {}
-
-export interface ReducerDuctData {
-  start: Point;
-  end: Point;
-  startDiameter: number;
-  endDiameter: number;
-  length: number;
+export interface YBranch extends IDuctPart {
+    type: DuctPartType.YBranch;
+    length: number;
+    angle: number;
+    branchLength: number;
+    intersectionOffset: number;
 }
-export interface ReducerDuct extends IDuctPart<DuctPartType.Reducer, ReducerDuctData> {}
 
-export interface DamperDuctData {
-  length: number;
-  diameter: number;
+export interface YBranchReducer extends YBranch {
+    type: DuctPartType.YBranchReducer;
+    diameter2: number;
+    diameter3: number;
 }
-export interface DamperDuct extends IDuctPart<DuctPartType.Straight, DamperDuctData> {}
 
-export interface CapDuctData {
-  position: Point;
-  diameter: number;
+export interface Reducer extends IDuctPart {
+    type: DuctPartType.Reducer;
+    length: number;
+    diameter2: number;
 }
-export interface CapDuct extends IDuctPart<DuctPartType.Cap, CapDuctData> {}
 
-export interface TeeDuctData {
-  mainConnection: Point;
-  branchConnection: Point;
-  mainDiameter: number;
-  branchDiameter: number;
-  mainLength: number; // Assuming a default length for drawing
-  branchLength: number; // Assuming a default length for drawing
+export interface Cap extends IDuctPart {
+    type: DuctPartType.Cap;
 }
-export interface TeeDuct extends IDuctPart<DuctPartType.Tee, TeeDuctData> {}
 
-export type AnyDuctPart = StraightDuct | ElbowDuct | AdjustableElbowDuct | BranchDuct | YBranchDuct | YBranchReducerDuct | ReducerDuct | DamperDuct | CapDuct | TeeDuct;
+export interface Tee extends IDuctPart {
+    type: DuctPartType.Tee;
+    mainLength: number;
+    branchLength: number;
+    branchDiameter: number;
+}
 
+
+// A union of all possible duct part types.
+export type AnyDuctPart =
+  | StraightDuct
+  | Damper
+  | Elbow90
+  | AdjustableElbow
+  | TeeReducer
+  | YBranch
+  | YBranchReducer
+  | Reducer
+  | Cap
+  | Tee;
+
+// FittingItem from the palette, now using a flexible data structure.
 export type FittingItem = {
   id: string;
   name: string;
   visible: boolean;
   type: DuctPartType;
-  data: StraightDuctData | ElbowDuctData | AdjustableElbowDuctData | BranchDuctData | YBranchDuctData | ReducerDuctData | DamperDuctData | CapDuctData | TeeDuctData;
+  // All possible properties from the vanilla JS fittings are included here.
+  diameter?: number;
+  legLength?: number;
+  angle?: number;
+  diameter2?: number;
+  diameter3?: number;
+  length?: number;
+  branchLength?: number;
+  intersectionOffset?: number;
 };
 
 export type Fittings = Record<string, FittingItem[]>;
@@ -135,6 +142,7 @@ export interface Dimension {
   p2_pointId: number | string;
   p2_pointType: 'connector' | 'intersection';
   value: number;
+  isStraightRun?: boolean;
 }
 
 export interface SnapPoint extends Point {
@@ -158,6 +166,7 @@ export interface ConfirmModalContent {
 export interface DragState {
   isDragging: boolean;
   targetId: number | null;
+  initialPositions: Map<number, Point> | null;
   offset: Point;
 }
 

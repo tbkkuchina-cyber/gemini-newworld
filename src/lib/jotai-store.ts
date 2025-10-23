@@ -10,7 +10,7 @@ export const cameraAtom = atom<Camera>({ x: 0, y: 0, zoom: 1 / (1.2 * 1.2) });
 export const selectedObjectIdAtom = atom<number | null>(null);
 export const modeAtom = atom<'pan' | 'measure'>('pan');
 export const isPanningAtom = atom<boolean>(false);
-export const dragStateAtom = atom<DragState>({ isDragging: false, targetId: null, offset: { x: 0, y: 0 } });
+export const dragStateAtom = atom<DragState>({ isDragging: false, targetId: null, initialPositions: null, offset: { x: 0, y: 0 } });
 export const isConfirmModalOpenAtom = atom<boolean>(false);
 export const confirmModalContentAtom = atom<ConfirmModalContent>({ title: '', message: '' });
 export const confirmActionAtom = atom<(() => void) | null>(null);
@@ -24,6 +24,7 @@ export const isDimensionModalOpenAtom = atom<boolean>(false);
 export const dimensionModalContentAtom = atom<any>(null); // Type any to avoid circular dependency issues for now
 export const isFittingsModalOpenAtom = atom<boolean>(false);
 export const nextIdAtom = atom<number>(0);
+export const pendingActionAtom = atom<string | null>(null);
 
 // --- Derived Atoms (Reading State) ---
 

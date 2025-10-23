@@ -1,7 +1,12 @@
 'use client';
 
 import DuctCanvasApp from "@/components/DuctCanvasApp";
+import { ClientOnlyProvider } from "@/lib/ClientOnlyProvider";
 
 export default function Page() {
-  return <DuctCanvasApp />;
+  return (
+    <ClientOnlyProvider>
+      <DuctCanvasApp />
+    </ClientOnlyProvider>
+  );
 }

@@ -3,36 +3,15 @@
 import { useAtomValue, useSetAtom } from 'jotai';
 import PaletteItem from "./PaletteItem";
 import { StraightDuct, DuctPartType } from "@/lib/types";
-import { fittingsAtom, addObjectAtom, openFittingsModalAtom } from '@/lib/jotai-store';
+import { fittingsAtom, addObjectAtom, openFittingsModalAtom, pendingActionAtom } from '@/lib/jotai-store';
 
 const Palette = () => {
   const fittings = useAtomValue(fittingsAtom);
-  const addObject = useSetAtom(addObjectAtom);
+  const setPendingAction = useSetAtom(pendingActionAtom);
   const openFittingsModal = useSetAtom(openFittingsModalAtom);
 
   const handleAddStraightDuct = () => {
-    // This will add the duct to the center of the viewport later.
-    // For now, adds at (0,0).
-    const newDuct: StraightDuct = {
-      id: Date.now(),
-      groupId: Date.now(),
-      type: DuctPartType.Straight,
-      x: 0,
-      y: 0,
-      data: {
-        start: { x: 0, y: 0 },
-        end: { x: 400, y: 0 },
-        length: 400,
-        diameter: 100,
-      },
-      name: '直管', // Add a default name
-      rotation: 0,
-      diameter: 100, // Added here
-      systemName: 'SA-1', // Default or from input
-      isSelected: false,
-      isFlipped: false,
-    };
-    addObject(newDuct);
+    setPendingAction('add-straight-duct-at-center');
   };
 
   return (

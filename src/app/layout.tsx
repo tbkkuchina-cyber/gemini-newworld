@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { JotaiProvider } from "@/lib/store-provider";
-import { ClientOnlyProvider } from "@/lib/ClientOnlyProvider";
-
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
@@ -19,9 +17,7 @@ export default function RootLayout({
   return (
     <html lang="ja" className="h-full">
       <body className={`${inter.className} h-full`}>
-        <ClientOnlyProvider>
-          <JotaiProvider>{children}</JotaiProvider>
-        </ClientOnlyProvider>
+        <JotaiProvider>{children}</JotaiProvider>
       </body>
     </html>
   );
