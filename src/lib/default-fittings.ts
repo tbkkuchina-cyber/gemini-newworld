@@ -7,7 +7,7 @@ export function getDefaultFittings(): Fittings {
             { id: 'elbow90-100', name: 'D100', visible: true, type: DuctPartType.Elbow90, diameter: 100, legLength: 100 },
         ],
         '45°エルボ': [
-            { id: 'elbow45-100', name: 'D100', visible: true, type: DuctPartType.Elbow, angle: 135, diameter: 100, legLength: 40 },
+            { id: 'elbow45-100', name: 'D100 45°', visible: true, type: DuctPartType.AdjustableElbow, angle: 135, diameter: 100, legLength: 40 },
         ],
         'T字管レジューサー': [
             { id: 'teered-100-100-100', name: 'D100-100-100', visible: true, type: DuctPartType.TeeReducer, diameter: 100, diameter2: 100, diameter3: 100, length: 250, branchLength: 150, intersectionOffset: 0 },

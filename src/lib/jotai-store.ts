@@ -6,25 +6,29 @@ const FITTINGS_STORAGE_KEY = 'ductAppFittings';
 
 // --- Primitive Atoms (The Source of Truth) ---
 export const objectsAtom = atom<AnyDuctPart[]>([]);
+export const dimensionsAtom = atom<Dimension[]>([]);
 export const cameraAtom = atom<Camera>({ x: 0, y: 0, zoom: 1 / (1.2 * 1.2) });
 export const selectedObjectIdAtom = atom<number | null>(null);
 export const modeAtom = atom<'pan' | 'measure'>('pan');
 export const isPanningAtom = atom<boolean>(false);
 export const dragStateAtom = atom<DragState>({ isDragging: false, targetId: null, initialPositions: null, offset: { x: 0, y: 0 } });
-export const isConfirmModalOpenAtom = atom<boolean>(false);
-export const confirmModalContentAtom = atom<ConfirmModalContent>({ title: '', message: '' });
-export const confirmActionAtom = atom<(() => void) | null>(null);
+export const isClearCanvasModalOpenAtom = atom<boolean>(false);
 export const fittingsAtom = atom<Fittings>({});
 export const isContextMenuOpenAtom = atom<boolean>(false);
 export const contextMenuPositionAtom = atom<{ x: number; y: number }>({ x: 0, y: 0 });
 export const measurePointsAtom = atom<SnapPoint[]>([]);
 export const mouseWorldPosAtom = atom<Point | null>(null);
-export const dimensionsAtom = atom<Dimension[]>([]);
 export const isDimensionModalOpenAtom = atom<boolean>(false);
-export const dimensionModalContentAtom = atom<any>(null); // Type any to avoid circular dependency issues for now
+export const dimensionModalContentAtom = atom<any>(null);
 export const isFittingsModalOpenAtom = atom<boolean>(false);
 export const nextIdAtom = atom<number>(0);
 export const pendingActionAtom = atom<string | null>(null);
+
+// --- History (Undo/Redo) Atoms ---
+type HistoryState = { objects: AnyDuctPart[], dimensions: Dimension[] };
+export const historyAtom = atom<HistoryState[]>([]);
+export const historyIndexAtom = atom<number>(-1);
+
 
 // --- Derived Atoms (Reading State) ---
 
@@ -34,15 +38,56 @@ export const selectedObjectAtom = atom((get) => {
   return objects.find(o => o.id === selectedId) || null;
 });
 
+export const canUndoAtom = atom((get) => get(historyIndexAtom) > 0);
+export const canRedoAtom = atom((get) => get(historyIndexAtom) < get(historyAtom).length - 1);
+
+
 // --- Write-only Atoms (Actions) ---
+
+export const saveStateAtom = atom(null, (get, set) => {
+    const objects = get(objectsAtom);
+    const dimensions = get(dimensionsAtom);
+    const history = get(historyAtom);
+    const historyIndex = get(historyIndexAtom);
+
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push({ objects, dimensions });
+
+    set(historyAtom, newHistory);
+    set(historyIndexAtom, newHistory.length - 1);
+});
+
+export const undoAtom = atom(null, (get, set) => {
+    if (get(canUndoAtom)) {
+        const newIndex = get(historyIndexAtom) - 1;
+        const history = get(historyAtom);
+        const { objects, dimensions } = history[newIndex];
+        set(objectsAtom, objects);
+        set(dimensionsAtom, dimensions);
+        set(historyIndexAtom, newIndex);
+    }
+});
+
+export const redoAtom = atom(null, (get, set) => {
+    if (get(canRedoAtom)) {
+        const newIndex = get(historyIndexAtom) + 1;
+        const history = get(historyAtom);
+        const { objects, dimensions } = history[newIndex];
+        set(objectsAtom, objects);
+        set(dimensionsAtom, dimensions);
+        set(historyIndexAtom, newIndex);
+    }
+});
 
 export const addObjectAtom = atom(null, (get, set, part: AnyDuctPart) => {
   set(objectsAtom, (prev) => [...prev, part]);
+  set(saveStateAtom);
 });
 
 export const clearCanvasAtom = atom(null, (get, set) => {
     set(objectsAtom, []);
     set(dimensionsAtom, []);
+    set(saveStateAtom);
 });
 
 export const deleteSelectedObjectAtom = atom(null, (get, set) => {
@@ -51,6 +96,7 @@ export const deleteSelectedObjectAtom = atom(null, (get, set) => {
     set(objectsAtom, (prev) => prev.filter(o => o.id !== selectedId));
     set(selectedObjectIdAtom, null);
     set(isContextMenuOpenAtom, false);
+    set(saveStateAtom);
   }
 });
 
@@ -60,6 +106,7 @@ export const rotateSelectedObjectAtom = atom(null, (get, set) => {
         set(objectsAtom, prev => prev.map(o => 
             o.id === selectedId ? { ...o, rotation: (o.rotation + 45) % 360 } : o
         ));
+        set(saveStateAtom);
     }
 });
 
@@ -69,6 +116,7 @@ export const flipSelectedObjectAtom = atom(null, (get, set) => {
         set(objectsAtom, prev => prev.map(o => 
             o.id === selectedId ? { ...o, isFlipped: !o.isFlipped } : o
         ));
+        set(saveStateAtom);
     }
 });
 
@@ -78,11 +126,13 @@ export const disconnectSelectedObjectAtom = atom(null, (get, set) => {
         set(objectsAtom, prev => prev.map(o => 
             o.id === selectedId ? { ...o, groupId: o.id } : o
         ));
+        set(saveStateAtom);
     }
 });
 
 export const addDimensionAtom = atom(null, (get, set, dimension: Dimension) => {
     set(dimensionsAtom, prev => [...prev, dimension]);
+    set(saveStateAtom);
 });
 
 export const setFittingsAtom = atom(null, (get, set, fittings: Fittings) => {
@@ -122,6 +172,7 @@ export const loadFittingsAtom = atom(null, (get, set) => {
         console.error("Failed to load fittings:", error);
         set(fittingsAtom, getDefaultFittings());
     }
+    set(saveStateAtom); // Save initial state
 });
 
 export const saveFittingsAtom = atom(null, (get, set) => {

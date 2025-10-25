@@ -13,11 +13,6 @@ interface ConfirmModalProps {
 const ConfirmModal = ({ isOpen, onClose, onConfirm, title, children }: ConfirmModalProps) => {
   if (!isOpen) return null;
 
-  const handleConfirm = () => {
-    onConfirm();
-    onClose();
-  };
-
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm">
@@ -32,7 +27,7 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, children }: ConfirmMo
           <button onClick={onClose} className="bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-md hover:bg-gray-300">
             キャンセル
           </button>
-          <button onClick={handleConfirm} className="bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700">
+          <button onClick={onConfirm} className="bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700">
             実行
           </button>
         </div>

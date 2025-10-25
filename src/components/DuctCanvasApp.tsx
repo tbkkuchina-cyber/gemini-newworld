@@ -2,19 +2,16 @@
 
 import { useEffect } from "react";
 import dynamic from 'next/dynamic';
-import { useAtomValue, useSetAtom } from 'jotai';
+import { useAtom, useSetAtom, useAtomValue } from 'jotai';
 import CanvasArea from "@/components/CanvasArea";
 import ConfirmModal from "@/components/ConfirmModal";
 import ContextMenu from "@/components/ContextMenu";
 import DimensionModal from "@/components/DimensionModal";
 import FittingsModal from "@/components/FittingsModal";
 import Toolbar from "@/components/Toolbar";
-// import Palette from "@/components/Palette"; // Import statically
 import {
-  isConfirmModalOpenAtom,
-  confirmModalContentAtom,
-  closeConfirmModalAtom,
-  confirmActionAtom,
+  isClearCanvasModalOpenAtom,
+  clearCanvasAtom,
   loadFittingsAtom,
   isContextMenuOpenAtom,
   contextMenuPositionAtom,
@@ -26,10 +23,8 @@ import {
 const Palette = dynamic(() => import('@/components/Palette'), { ssr: false });
 
 const DuctCanvasApp = () => {
-  const isConfirmModalOpen = useAtomValue(isConfirmModalOpenAtom);
-  const confirmModalContent = useAtomValue(confirmModalContentAtom);
-  const closeConfirmModal = useSetAtom(closeConfirmModalAtom);
-  const confirmAction = useAtomValue(confirmActionAtom);
+  const [isClearModalOpen, setIsClearModalOpen] = useAtom(isClearCanvasModalOpenAtom);
+  const clearCanvas = useSetAtom(clearCanvasAtom);
   const loadFittings = useSetAtom(loadFittingsAtom);
   const isContextMenuOpen = useAtomValue(isContextMenuOpenAtom);
   const contextMenuPosition = useAtomValue(contextMenuPositionAtom);
@@ -40,6 +35,15 @@ const DuctCanvasApp = () => {
   useEffect(() => {
     loadFittings();
   }, [loadFittings]);
+
+  const handleClearConfirm = () => {
+    clearCanvas();
+    setIsClearModalOpen(false);
+  };
+
+  const handleClearClose = () => {
+    setIsClearModalOpen(false);
+  };
 
   return (
     <div className="w-screen h-screen bg-gray-100 text-gray-800 flex flex-col md:flex-row">
@@ -55,12 +59,12 @@ const DuctCanvasApp = () => {
 
       {/* Modals */}
       <ConfirmModal
-        isOpen={isConfirmModalOpen}
-        onClose={closeConfirmModal}
-        onConfirm={confirmAction || (() => {})}
-        title={confirmModalContent.title}
+        isOpen={isClearModalOpen}
+        onClose={handleClearClose}
+        onConfirm={handleClearConfirm}
+        title="キャンバスをクリア"
       >
-        <p>{confirmModalContent.message}</p>
+        <p>すべての部品と寸法を削除します。よろしいですか？</p>
       </ConfirmModal>
       <DimensionModal
         isOpen={isDimensionModalOpen}

@@ -11,7 +11,7 @@ export interface Camera {
 
 export enum DuctPartType {
   Straight = 'Straight',
-  Elbow = 'Elbow',
+
   Elbow90 = 'Elbow90',
   AdjustableElbow = 'AdjustableElbow',
   TeeReducer = 'TeeReducer',
@@ -19,8 +19,7 @@ export enum DuctPartType {
   YBranchReducer = 'YBranchReducer',
   Reducer = 'Reducer',
   Damper = 'Damper',
-  Cap = 'Cap',
-  Tee = 'Tee',
+
 }
 
 // Base interface with common properties, now flat.
@@ -89,16 +88,9 @@ export interface Reducer extends IDuctPart {
     diameter2: number;
 }
 
-export interface Cap extends IDuctPart {
-    type: DuctPartType.Cap;
-}
 
-export interface Tee extends IDuctPart {
-    type: DuctPartType.Tee;
-    mainLength: number;
-    branchLength: number;
-    branchDiameter: number;
-}
+
+
 
 
 // A union of all possible duct part types.
@@ -110,9 +102,7 @@ export type AnyDuctPart =
   | TeeReducer
   | YBranch
   | YBranchReducer
-  | Reducer
-  | Cap
-  | Tee;
+  | Reducer;
 
 // FittingItem from the palette, now using a flexible data structure.
 export type FittingItem = {

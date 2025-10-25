@@ -12,7 +12,7 @@ import {
   saveFittingsAtom
 } from '@/lib/jotai-store';
 
-// Helper function to generate the name based on diameters, as per user specification
+// Helper function to generate the name based on diameters
 const generateNameFromDiameters = (item: FittingItem): string => {
     const d1 = item.diameter || 0;
     const d2 = (item as any).diameter2 || 0;
@@ -40,17 +40,26 @@ const FittingsModal = () => {
     setLocalFittings(JSON.parse(JSON.stringify(globalFittings)));
   }, [globalFittings, isOpen]);
 
+  // Effect to globally prevent scrolling when modal is open
   useEffect(() => {
+    const preventDefault = (e: Event) => e.preventDefault();
+    const preventDefaultForScrollKeys = (e: KeyboardEvent) => {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'PageUp', 'PageDown', 'End', 'Home'].includes(e.key)) {
+            e.preventDefault();
+        }
+    };
+
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'auto';
-    }
-    // Cleanup function to restore scroll on component unmount
+      window.addEventListener('wheel', preventDefault, { passive: false });
+      window.addEventListener('keydown', preventDefaultForScrollKeys, { passive: false });
+    } 
+
     return () => {
-      document.body.style.overflow = 'auto';
+      window.removeEventListener('wheel', preventDefault);
+      window.removeEventListener('keydown', preventDefaultForScrollKeys);
     };
   }, [isOpen]);
+
 
   if (!isOpen) return null;
 
@@ -60,7 +69,6 @@ const FittingsModal = () => {
 
     (item as any)[prop] = value;
 
-    // Automatic field updates based on the exact specifications provided by the user
     if (prop.includes('diameter')) {
         item.name = generateNameFromDiameters(item);
     }
@@ -110,19 +118,6 @@ const FittingsModal = () => {
         headerSet.delete('id');
         headerSet.delete('type');
 
-        const headerLabelMap: Record<string, string> = {
-            name: '名前',
-            visible: '表示',
-            diameter: '直径',
-            diameter2: '直径2',
-            diameter3: '直径3',
-            length: '主管長',
-            branchLength: '枝長',
-            legLength: '脚長',
-            angle: '角度',
-            intersectionOffset: '交差オフセット',
-        };
-
         const sortedHeaders = Array.from(headerSet).sort((a, b) => {
             const order = ['name', 'visible', 'diameter', 'diameter2', 'diameter3', 'length', 'branchLength', 'legLength', 'angle', 'intersectionOffset'];
             const indexA = order.indexOf(a);
@@ -132,7 +127,6 @@ const FittingsModal = () => {
             if (indexB !== -1) return 1;
             return a.localeCompare(b);
         });
-
         return sortedHeaders;
     }, [items]);
 
@@ -142,7 +136,7 @@ const FittingsModal = () => {
         diameter: '直径',
         diameter2: '直径2',
         diameter3: '直径3',
-        length: '長さ',
+        length: '主管長',
         branchLength: '枝長',
         legLength: '脚長',
         angle: '角度',
@@ -184,6 +178,7 @@ const FittingsModal = () => {
                     value={value !== undefined ? value : ''}
                     readOnly={isReadOnly}
                     step={step}
+                    min={prop.includes('diameter') ? 25 : undefined}
                     onChange={(e) => {
                         const val = inputType === 'number' ? parseFloat(e.target.value) || 0 : e.target.value;
                         handleInputChange(category, index, prop, val);
