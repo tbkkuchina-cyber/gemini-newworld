@@ -25,7 +25,6 @@ const PaletteItem = ({ item, type }: PaletteItemProps) => {
       case DuctPartType.AdjustableElbow:
         shape = <path d="M5 45 L 25 25 L 45 35" stroke={color} strokeWidth="10" fill="none" />;
         break;
-      case DuctPartType.Tee:
       case DuctPartType.TeeReducer:
         shape = <path d="M5 25 H 45 M 25 25 V 5" stroke={color} strokeWidth="10" fill="none" />;
         break;
@@ -38,9 +37,6 @@ const PaletteItem = ({ item, type }: PaletteItemProps) => {
         break;
       case DuctPartType.Reducer:
         shape = <path d="M5 15 L 45 20 L 45 30 L 5 35 Z" fill={color} />;
-        break;
-      case DuctPartType.Cap:
-        shape = <rect x="5" y="15" width="10" height="20" fill={color} />;
         break;
       case DuctPartType.Straight:
       default:

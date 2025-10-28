@@ -68,15 +68,21 @@ export interface TeeReducer extends IDuctPart {
     intersectionOffset: number;
 }
 
-export interface YBranch extends IDuctPart {
-    type: DuctPartType.YBranch;
+// [修正] YBranch と YBranchReducer の共通プロパティを持つベースインターフェースを作成
+export interface YBranchBase extends IDuctPart {
     length: number;
     angle: number;
     branchLength: number;
     intersectionOffset: number;
 }
 
-export interface YBranchReducer extends YBranch {
+// [修正] YBranch が YBranchBase を継承するように変更
+export interface YBranch extends YBranchBase {
+    type: DuctPartType.YBranch;
+}
+
+// [修正] YBranchReducer が YBranchBase を継承するように変更
+export interface YBranchReducer extends YBranchBase {
     type: DuctPartType.YBranchReducer;
     diameter2: number;
     diameter3: number;
@@ -146,6 +152,11 @@ export interface Connector extends Point {
   angle: number;
   diameter: number;
   type?: 'main' | 'branch';
+}
+
+// [修正] duct-models.ts が必要とする IntersectionPoint の定義を追加しました
+export interface IntersectionPoint extends Point {
+  id: string | number;
 }
 
 export interface ConfirmModalContent {
