@@ -20,10 +20,10 @@ import {
   isPanningAtom,
   dragStateAtom,
   pendingActionAtom,
-  saveStateAtom, // Add this import
+  saveStateAtom,
 } from '@/lib/jotai-store';
 
-const SNAP_DISTANCE = 20;
+const SNAP_DISTANCE = 50;
 
 export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) => {
   const camera = useAtomValue(cameraAtom);
@@ -41,31 +41,24 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
   const setMouseWorldPos = useSetAtom(mouseWorldPosAtom);
   const openDimensionModal = useSetAtom(openDimensionModalAtom);
   const setObjects = useSetAtom(objectsAtom);
-  const saveState = useSetAtom(saveStateAtom); // Add this
-
-  const mergeGroups = useCallback((groupA_id: number, groupB_id: number) => {
-    if (groupA_id === groupB_id) return;
-    console.log(`Merging group ${groupB_id} into ${groupA_id}`);
-    setObjects(prev => prev.map(o => o.groupId === groupB_id ? { ...o, groupId: groupA_id } : o));
-  }, [setObjects]);
+  const saveState = useSetAtom(saveStateAtom);
 
   const [isPanning, setIsPanning] = useAtom(isPanningAtom);
   const [dragState, setDragState] = useAtom(dragStateAtom);
   const lastMousePos = useRef<Point>({ x: 0, y: 0 });
-  const lastSnap = useRef<SnapResult | null>(null);
 
-  const findBestSnap = useCallback((draggedGroupId: number) => {
+  const findBestSnap = useCallback((draggedGroupId: number, currentObjects: AnyDuctPart[]) => {
     let bestSnap: SnapResult = { dist: Infinity, dx: 0, dy: 0, otherObj: null };
     const snapDist = SNAP_DISTANCE / camera.zoom;
 
-    const draggedObjects = objects.filter(o => o.groupId === draggedGroupId);
+    const draggedObjects = currentObjects.filter(o => o.groupId === draggedGroupId);
 
     for (const draggedObj of draggedObjects) {
         const draggedModel = createDuctPart(draggedObj);
         if (!draggedModel) continue;
 
         for (const draggedConnector of draggedModel.getConnectors()) {
-            for (const staticObj of objects) {
+            for (const staticObj of currentObjects) {
                 if (staticObj.groupId === draggedGroupId) continue;
 
                 const staticModel = createDuctPart(staticObj);
@@ -75,12 +68,12 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
                     if (draggedConnector.diameter === staticConnector.diameter) {
                         const dist = Math.hypot(draggedConnector.x - staticConnector.x, draggedConnector.y - staticConnector.y);
                         if (dist < snapDist && dist < bestSnap.dist) {
-                        bestSnap = {
-                            dist,
-                            dx: staticConnector.x - draggedConnector.x,
-                            dy: staticConnector.y - draggedConnector.y,
-                            otherObj: staticObj,
-                        };
+                          bestSnap = {
+                              dist,
+                              dx: staticConnector.x - draggedConnector.x,
+                              dy: staticConnector.y - draggedConnector.y,
+                              otherObj: staticObj,
+                          };
                         }
                     }
                 }
@@ -89,7 +82,7 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
     }
 
     return bestSnap.dist === Infinity ? null : bestSnap;
-  }, [camera.zoom, objects]);
+  }, [camera.zoom]);
 
   const handleMouseDown = useCallback((e: MouseEvent) => {
     closeContextMenu();
@@ -156,34 +149,10 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
       const total_dx = (worldPoint.x - dragState.offset.x) - initialTargetPos.x;
       const total_dy = (worldPoint.y - dragState.offset.y) - initialTargetPos.y;
 
-      const draggedObjGroupId = objects.find(o => o.id === dragState.targetId)?.groupId;
-      if (draggedObjGroupId === undefined) return;
-
-      const tempMovedObjects = objects.map(o => {
-        if (dragState.initialPositions!.has(o.id)) {
-          const initialPos = dragState.initialPositions!.get(o.id)!;
-          return { ...o, x: initialPos.x + total_dx, y: initialPos.y + total_dy };
-        }
-        return o;
-      });
-      
-      const snap = findBestSnap(draggedObjGroupId);
-
-      let final_dx = total_dx;
-      let final_dy = total_dy;
-
-      if (snap) {
-        final_dx += snap.dx;
-        final_dy += snap.dy;
-        lastSnap.current = snap;
-      } else {
-        lastSnap.current = null;
-      }
-
       setObjects(prev => prev.map(o => {
         if (dragState.initialPositions!.has(o.id)) {
           const initialPos = dragState.initialPositions!.get(o.id)!;
-          return { ...o, x: initialPos.x + final_dx, y: initialPos.y + final_dy };
+          return { ...o, x: initialPos.x + total_dx, y: initialPos.y + total_dy };
         }
         return o;
       }));
@@ -197,45 +166,69 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
       setCamera({ x: camera.x + dx / camera.zoom, y: camera.y + dy / camera.zoom });
       lastMousePos.current = { x: e.clientX, y: e.clientY };
     }
-  }, [canvasRef, camera, objects, setMouseWorldPos, closeContextMenu, findBestSnap, setObjects, setCamera, dragState, isPanning]);
+  }, [canvasRef, camera, setMouseWorldPos, closeContextMenu, setObjects, setCamera, dragState, isPanning]);
 
   const handleMouseUp = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    let connectionMade = false;
-    if (dragState.isDragging && dragState.targetId && lastSnap.current) {
-      const draggedObj = objects.find(o => o.id === dragState.targetId);
-      if (draggedObj && lastSnap.current.otherObj) {
-        mergeGroups(draggedObj.groupId, lastSnap.current.otherObj.groupId);
-        connectionMade = true;
-      }
-    }
-
+    let wasDragging = false;
     if (dragState.isDragging && dragState.targetId) {
-      const finalObj = objects.find(o => o.id === dragState.targetId);
-      const initialPos = dragState.initialPositions?.get(dragState.targetId);
-      const posChanged = finalObj && initialPos && (finalObj.x !== initialPos.x || finalObj.y !== initialPos.y);
+        wasDragging = true;
+        const draggedObj = objects.find(o => o.id === dragState.targetId);
+        if (draggedObj) {
+            const snap = findBestSnap(draggedObj.groupId, objects);
+            let connectionMade = false;
+            let finalObjects = objects;
 
-      if (posChanged || connectionMade) {
-        saveState();
-      }
+            if (snap && snap.otherObj) {
+                connectionMade = true;
+                const draggedGroupId = draggedObj.groupId;
+                const groupToMergeId = snap.otherObj.groupId;
+                
+                finalObjects = objects.map(o => {
+                    let newObj = { ...o };
+                    if (o.groupId === draggedGroupId) {
+                        newObj.x += snap.dx;
+                        newObj.y += snap.dy;
+                    }
+                    if (newObj.groupId === groupToMergeId) {
+                        newObj.groupId = draggedGroupId;
+                    }
+                    return newObj;
+                });
+                setObjects(finalObjects);
+            }
 
-      if (finalObj) {
-        const objectScreenPos = worldToScreen({ x: finalObj.x, y: finalObj.y }, canvas, camera);
-        openContextMenu({ x: objectScreenPos.x, y: objectScreenPos.y - 50 });
-      }
+            const initialPos = dragState.initialPositions?.get(dragState.targetId);
+            const finalTargetObj = finalObjects.find(o => o.id === dragState.targetId);
+            const posChanged = finalTargetObj && initialPos && (finalTargetObj.x !== initialPos.x || finalTargetObj.y !== initialPos.y);
+
+            if (posChanged || connectionMade) {
+                saveState();
+            }
+
+            if (finalTargetObj) {
+                const objectScreenPos = worldToScreen({ x: finalTargetObj.x, y: finalTargetObj.y }, canvas, camera);
+                openContextMenu({ x: objectScreenPos.x, y: objectScreenPos.y - 50 });
+            }
+        }
     }
 
-    setIsPanning(false);
-    setDragState({ isDragging: false, targetId: null, initialPositions: null, offset: { x: 0, y: 0 } });
-    lastSnap.current = null;
-    canvas.style.cursor = 'grab';
-  }, [camera, objects, dragState, lastSnap, setIsPanning, setDragState, mergeGroups, openContextMenu, worldToScreen, canvasRef, saveState]);
+    if (isPanning || wasDragging) {
+        setIsPanning(false);
+        setDragState({ isDragging: false, targetId: null, initialPositions: null, offset: { x: 0, y: 0 } });
+        canvas.style.cursor = 'grab';
+    }
+  }, [camera, objects, dragState, isPanning, findBestSnap, setObjects, saveState, openContextMenu, worldToScreen, canvasRef, setIsPanning, setDragState]);
 
   const handleMouseLeave = useCallback(() => {
       setMouseWorldPos(null);
-  }, [setMouseWorldPos]);
+      // Also end panning/dragging if mouse leaves canvas
+      if (isPanning || dragState.isDragging) {
+        handleMouseUp();
+      }
+  }, [setMouseWorldPos, isPanning, dragState.isDragging, handleMouseUp]);
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
@@ -339,7 +332,7 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
       };
 
       addObject(newDuct);
-      setPendingAction(null); // Reset the action
+      setPendingAction(null);
     }
   }, [pendingAction, canvasRef, camera, addObject, setPendingAction]);
 };

@@ -324,12 +324,24 @@ export class AdjustableElbow extends DuctPart {
         const rad = this.rotation * Math.PI / 180;
         const angle = this.isFlipped ? -this.angle : this.angle;
         const angleRad = angle * Math.PI / 180;
-        const c1_local = { x: this.legLength * Math.cos(-angleRad / 2), y: -this.legLength * Math.sin(-angleRad / 2) };
-        const c2_local = { x: this.legLength * Math.cos(angleRad / 2), y: -this.legLength * Math.sin(angleRad / 2) };
-        const rotate = (p: { x: number; y: number }) => ({ x: this.x + p.x * Math.cos(rad) - p.y * Math.sin(rad), y: this.y + p.x * Math.sin(rad) + p.y * Math.cos(rad) });
+
+        const c1_local = { 
+            x: this.legLength * Math.cos(-angleRad / 2),
+            y: this.legLength * Math.sin(-angleRad / 2) 
+        };
+        const c2_local = {
+            x: this.legLength * Math.cos(angleRad / 2),
+            y: this.legLength * Math.sin(angleRad / 2)
+        };
+
+        const rotate = (p: { x: number; y: number }) => ({ 
+            x: this.x + p.x * Math.cos(rad) - p.y * Math.sin(rad), 
+            y: this.y + p.x * Math.sin(rad) + p.y * Math.cos(rad) 
+        });
+
         return [
-            { id: 0, ...rotate(c1_local), angle: (this.rotation + 180 + angle / 2) % 360, diameter: this.diameter },
-            { id: 1, ...rotate(c2_local), angle: (this.rotation - angle / 2 + 360) % 360, diameter: this.diameter }
+            { id: 0, ...rotate(c1_local), angle: (this.rotation + 180 - angle / 2) % 360, diameter: this.diameter },
+            { id: 1, ...rotate(c2_local), angle: (this.rotation + angle / 2) % 360, diameter: this.diameter }
         ];
     }
     rotate(): void {
