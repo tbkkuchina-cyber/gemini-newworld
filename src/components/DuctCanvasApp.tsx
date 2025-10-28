@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import dynamic from 'next/dynamic';
 import { useAtom, useSetAtom, useAtomValue } from 'jotai';
+// --- 修正: 不要なスペースを削除 ---
 import CanvasArea from "@/components/CanvasArea";
 import ConfirmModal from "@/components/ConfirmModal";
 import ContextMenu from "@/components/ContextMenu";
@@ -17,11 +18,29 @@ import {
   contextMenuPositionAtom,
   isDimensionModalOpenAtom,
   dimensionModalContentAtom,
-  closeDimensionModalAtom
-} from "@/lib/jotai-store";
+  closeDimensionModalAtom,
+  notificationAtom
+} from "@/lib/jotai-store"; // ここも修正
+// ---------------------------------
 
-const Palette = dynamic(() => import('@/components/Palette'), { ssr: false });
+// Palette はクライアントサイドでのみレンダリング
+const Palette = dynamic(() => import('@/components/Palette'), { ssr: false }); // ここも修正
 
+// --- Notification Component ---
+const NotificationDisplay = () => {
+    const notification = useAtomValue(notificationAtom);
+    if (!notification?.message) { return null; }
+    return (
+        <div
+            key={notification.id}
+            className="fixed bottom-4 right-4 z-50 p-3 bg-gray-800 text-white rounded-md shadow-lg animate-fade-in-out"
+        >
+            {notification.message}
+        </div>
+    );
+};
+
+// --- Main App Component ---
 const DuctCanvasApp = () => {
   const [isClearModalOpen, setIsClearModalOpen] = useAtom(isClearCanvasModalOpenAtom);
   const clearCanvas = useSetAtom(clearCanvasAtom);
@@ -46,7 +65,7 @@ const DuctCanvasApp = () => {
   };
 
   return (
-    <div className="w-screen h-screen bg-gray-100 text-gray-800 flex flex-col md:flex-row">
+    <div className="w-screen h-screen bg-gray-100 text-gray-800 flex flex-col md:flex-row relative">
       {/* Main Content */}
       <main className="flex-1 flex flex-col relative">
         <Toolbar />
@@ -72,6 +91,20 @@ const DuctCanvasApp = () => {
         content={dimensionModalContent}
       />
       <FittingsModal />
+
+      {/* --- Notification Display --- */}
+      <NotificationDisplay />
+
+      {/* Tailwind animation definition */}
+      <style jsx global>{`
+        @keyframes fadeInOut {
+          0%, 100% { opacity: 0; transform: translateY(10px); }
+          10%, 90% { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-out {
+          animation: fadeInOut 3s ease-in-out forwards;
+        }
+      `}</style>
     </div>
   );
 };
