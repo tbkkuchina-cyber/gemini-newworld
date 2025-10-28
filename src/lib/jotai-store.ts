@@ -1,6 +1,8 @@
 import { atom } from 'jotai';
 import { AnyDuctPart, Camera, Point, Fittings, ConfirmModalContent, Dimension, SnapPoint, FittingItem, DuctPartType, DragState } from './types';
 import { getDefaultFittings } from './default-fittings';
+// duct-models.ts から createDuctPart をインポートします
+import { createDuctPart } from './duct-models';
 
 const FITTINGS_STORAGE_KEY = 'ductAppFittings';
 
@@ -100,22 +102,55 @@ export const deleteSelectedObjectAtom = atom(null, (get, set) => {
   }
 });
 
+/**
+ * [修正] 選択されたオブジェクトを回転させます。
+ * 単純な回転ロジック (rotation + 45) を適用するのではなく、
+ * `createDuctPart` を使ってモデルのインスタンスを作成し、
+ * 各モデル固有の `.rotate()` メソッド（AdjustableElbowの特殊なロジックなど）を呼び出します。
+ */
 export const rotateSelectedObjectAtom = atom(null, (get, set) => {
     const selectedId = get(selectedObjectIdAtom);
     if (selectedId !== null) {
-        set(objectsAtom, prev => prev.map(o => 
-            o.id === selectedId ? { ...o, rotation: (o.rotation + 45) % 360 } : o
-        ));
+        set(objectsAtom, prev => prev.map(o => {
+            if (o.id === selectedId) {
+                // 1. データからモデルのインスタンスを作成
+                const model = createDuctPart(o);
+                if (model) {
+                    // 2. モデルの .rotate() メソッドを呼び出す
+                    model.rotate();
+                    // 3. 更新されたモデルのプロパティから新しいプレーンオブジェクトを返す
+                    // (model はクラスインスタンスだが、AnyDuctPart と同じプロパティを持つ)
+                    return { ...model } as AnyDuctPart;
+                }
+            }
+            return o;
+        }));
         set(saveStateAtom);
     }
 });
 
+/**
+ * [修正] 選択されたオブジェクトを反転させます。
+ * 単純な `isFlipped` のトグルだけでなく、
+ * `createDuctPart` を使ってモデルのインスタンスを作成し、
+ * 各モデル固有の `.flip()` メソッド（Reducerの直径入れ替えロジックなど）を呼び出します。
+ */
 export const flipSelectedObjectAtom = atom(null, (get, set) => {
     const selectedId = get(selectedObjectIdAtom);
     if (selectedId !== null) {
-        set(objectsAtom, prev => prev.map(o => 
-            o.id === selectedId ? { ...o, isFlipped: !o.isFlipped } : o
-        ));
+        set(objectsAtom, prev => prev.map(o => {
+            if (o.id === selectedId) {
+                // 1. データからモデルのインスタンスを作成
+                const model = createDuctPart(o);
+                if (model) {
+                    // 2. モデルの .flip() メソッドを呼び出す
+                    model.flip();
+                    // 3. 更新されたモデルのプロパティから新しいプレーンオブジェクトを返す
+                    return { ...model } as AnyDuctPart;
+                }
+            }
+            return o;
+        }));
         set(saveStateAtom);
     }
 });
@@ -147,6 +182,13 @@ export const selectObjectAtom = atom(null, (get, set, objectId: number | null) =
     set(selectedObjectIdAtom, objectId);
     set(objectsAtom, prev => prev.map(o => ({ ...o, isSelected: o.id === objectId })));
 });
+
+// Note: These atoms seem to be missing from your provided file, but are referenced elsewhere.
+// Adding them for completeness based on context.
+export const isConfirmModalOpenAtom = atom(false);
+export const confirmModalContentAtom = atom<ConfirmModalContent | null>(null);
+export const confirmActionAtom = atom<(() => void) | null>(null);
+
 
 export const openConfirmModalAtom = atom(null, (get, set, { content, onConfirm }: { content: ConfirmModalContent, onConfirm: () => void }) => {
     set(isConfirmModalOpenAtom, true);
