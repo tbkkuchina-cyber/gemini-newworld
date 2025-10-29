@@ -1,4 +1,4 @@
-import { RefObject, useCallback, useEffect, useRef } from 'react';
+import { RefObject, useCallback, useEffect, useRef, useState } from 'react'; // useState を追加
 import { useAtomValue, useSetAtom, useAtom } from 'jotai';
 // getObjectAt, screenToWorld, worldToScreen をインポート
 import { getObjectAt, screenToWorld, worldToScreen } from '@/lib/canvas-utils';
@@ -66,48 +66,35 @@ const findSnapPoint = (worldPos: Point, objects: AnyDuctPart[], camera: { zoom: 
 // (duct-models.ts に移すのが理想だが、一旦ここに置く)
 function getLegLength(objData: AnyDuctPart | null, connPointInfo: SnapPoint | Connector | IntersectionPoint | null): number {
     if (!objData || !connPointInfo) return 0;
-
     const model = createDuctPart(objData);
     if (!model) return 0;
-
-    // isPointInside で使われているロジックと似ているが、
-    // ここでは SnapPoint の pointType と pointId を見て判断する
-    if ('pointType' in connPointInfo && connPointInfo.pointType === 'intersection') return 0; // 交差点なら脚長は0
-
+    if ('pointType' in connPointInfo && connPointInfo.pointType === 'intersection') return 0;
     const pointId = ('pointId' in connPointInfo) ? connPointInfo.pointId : ('id' in connPointInfo ? connPointInfo.id : null);
     if (pointId === null) return 0;
-
-    // Connector オブジェクトを取得 (IntersectionPoint の場合は conn は null)
     const conn = model.getConnectors().find(c => c.id === pointId);
-    if (!conn) return 0; // pointId が Connector のものでなければ 0
-
+    if (!conn) return 0;
     switch(model.type) {
         case DuctPartType.Elbow90:
         case DuctPartType.AdjustableElbow:
-            // Elbow 型は legLength プロパティを持つことを TypeScript に伝える必要がある
-            if ('legLength' in model) return model.legLength;
+            if ('legLength' in model) return model.legLength as number;
             break;
         case DuctPartType.TeeReducer:
-             if ('branchLength' in model && conn.type === 'branch') return model.branchLength;
-             // TeeReducer 型は length, intersectionOffset プロパティを持つ
+             if ('branchLength' in model && conn.type === 'branch') return model.branchLength as number;
              if ('length' in model && 'intersectionOffset' in model) {
-                 if (conn.id === 0) return model.length / 2 + model.intersectionOffset;
-                 if (conn.id === 1) return model.length / 2 - model.intersectionOffset;
+                 if (conn.id === 0) return (model.length as number) / 2 + (model.intersectionOffset as number);
+                 if (conn.id === 1) return (model.length as number) / 2 - (model.intersectionOffset as number);
              }
              break;
         case DuctPartType.YBranch:
         case DuctPartType.YBranchReducer:
-             // YBranch/YBranchReducer 型は branchLength, length, intersectionOffset プロパティを持つ
-             if ('branchLength' in model && conn.type === 'branch') return model.branchLength;
+             if ('branchLength' in model && conn.type === 'branch') return model.branchLength as number;
              if ('length' in model && 'intersectionOffset' in model) {
-                 if (conn.id === 0) return model.length / 2 + model.intersectionOffset;
-                 if (conn.id === 1) return model.length / 2 - model.intersectionOffset;
+                 if (conn.id === 0) return (model.length as number) / 2 + (model.intersectionOffset as number);
+                 if (conn.id === 1) return (model.length as number) / 2 - (model.intersectionOffset as number);
              }
              break;
-        default:
-            return 0; // StraightDuct や他の型は脚長 0
     }
-    return 0; // Fallback
+    return 0;
 }
 
 
@@ -128,11 +115,15 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
   const openDimensionModal = useSetAtom(openDimensionModalAtom);
   const setObjects = useSetAtom(objectsAtom);
   const saveState = useSetAtom(saveStateAtom);
-  // const updateStraightDuctLength = useSetAtom(updateStraightDuctLengthAtom); // 後で追加
 
   const [isPanning, setIsPanning] = useAtom(isPanningAtom);
   const [dragState, setDragState] = useAtom(dragStateAtom);
   const lastMousePos = useRef<Point>({ x: 0, y: 0 });
+
+  // --- Touch State ---
+  const [isPinching, setIsPinching] = useState(false);
+  const initialPinchDist = useRef<number>(0);
+  const lastPinchMidpoint = useRef<Point | null>(null); // For two-finger panning
 
   // --- findBestSnap (変更なし) ---
   const findBestSnap = useCallback((draggedGroupId: number, currentObjects: AnyDuctPart[]) => {
@@ -161,146 +152,89 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
     return bestSnap.dist === Infinity ? null : bestSnap;
   }, [camera.zoom]);
 
-  // --- processMeasurement 関数 (新規追加) ---
+  // --- processMeasurement 関数 (変更なし) ---
   const processMeasurement = useCallback((p1_info: SnapPoint, p2_info: SnapPoint) => {
       const measuredDistance = Math.hypot(p2_info.x - p1_info.x, p2_info.y - p1_info.y);
-
-      // --- オリジナルの findEndpointObject ロジックを移植 ---
       const findEndpointObject = (pointInfo: SnapPoint): AnyDuctPart | null => {
           const clickedObj = objects.find(o => o.id === pointInfo.objId);
           if (!clickedObj) return null;
-          // 交差点でクリックされた場合は、そのオブジェクト自体が端点
           if (pointInfo.pointType === 'intersection') return clickedObj;
-
-          // 接続点でクリックされた場合は、接続先の継手を探す
           const connectedFitting = objects.find(o =>
-              o.id !== clickedObj.id &&
-              o.groupId === clickedObj.groupId && // 同じグループ内で
-              o.type !== DuctPartType.Straight && // 直管ではなく
-              createDuctPart(o)?.getConnectors().some(c => Math.hypot(c.x - pointInfo.x, c.y - pointInfo.y) < 1) // 接続点と一致
+              o.id !== clickedObj.id && o.groupId === clickedObj.groupId && o.type !== DuctPartType.Straight &&
+              createDuctPart(o)?.getConnectors().some(c => Math.hypot(c.x - pointInfo.x, c.y - pointInfo.y) < 1)
           );
-          return connectedFitting || clickedObj; // 継手が見つからなければ元のオブジェクト
+          return connectedFitting || clickedObj;
       };
-
       const obj1 = findEndpointObject(p1_info);
       const obj2 = findEndpointObject(p2_info);
 
+      // --- 修正: obj1, obj2 の null チェックを追加 ---
+      if (!obj1 || !obj2) {
+          console.error("Could not find objects for measurement points:", p1_info, p2_info);
+          clearMeasurePoints(); // オブジェクトが見つからない場合は計測を中断
+          return;
+      }
+      // ---------------------------------------------
+
       let ductToUpdate: AnyDuctPart | null = null;
       let lengthToSubtract = 0;
-
-      // --- 直管探索と脚長計算ロジック ---
       if (obj1 && obj2 && obj1.groupId === obj2.groupId) {
-          // obj1 と obj2 が同じ直管の場合 (直管の両端をクリック)
-          if (obj1.type === DuctPartType.Straight && obj1.id === obj2.id) {
-              ductToUpdate = obj1;
-          } else {
-              // obj1 と obj2 を接続する直管を探す
+          if (obj1.type === DuctPartType.Straight && obj1.id === obj2.id) { ductToUpdate = obj1; }
+          else {
               const straightDuctsInGroup = objects.filter(o => o.groupId === obj1.groupId && o.type === DuctPartType.Straight);
               for (const duct of straightDuctsInGroup) {
-                  const ductModel = createDuctPart(duct);
-                  if (!ductModel) continue;
+                  const ductModel = createDuctPart(duct); if (!ductModel) continue;
                   const conns = ductModel.getConnectors();
-
-                  // obj1 と obj2 のモデルも取得
-                  const model1 = createDuctPart(obj1);
-                  const model2 = createDuctPart(obj2);
-                  if (!model1 || !model2) continue;
-
-                  // 直管が obj1 と obj2 の両方に接続しているか確認
+                  // --- 修正: createDuctPart の前に null チェック済みなので ! を使っても安全 ---
+                  const model1 = createDuctPart(obj1)!;
+                  const model2 = createDuctPart(obj2)!;
+                  // -------------------------------------------------------------------
                   const connectsTo1 = conns.some(c1 => model1.getConnectors().some(c2 => Math.hypot(c1.x - c2.x, c1.y - c2.y) < 1));
                   const connectsTo2 = conns.some(c1 => model2.getConnectors().some(c2 => Math.hypot(c1.x - c2.x, c1.y - c2.y) < 1));
-
-                  if (connectsTo1 && connectsTo2) {
-                      ductToUpdate = duct;
-                      break;
-                  }
+                  if (connectsTo1 && connectsTo2) { ductToUpdate = duct; break; }
               }
           }
       }
-
-      // --- 脚長計算 (ductToUpdateが見つかった場合) ---
       if (ductToUpdate) {
           const isP1Intersection = p1_info.pointType === 'intersection';
           const isP2Intersection = p2_info.pointType === 'intersection';
-
-          // 関連するコネクタを見つけて getLegLength に渡す
-          // obj1/obj2 が Duct の可能性もあるため、モデルを取得してコネクタを探す
-          const model1 = createDuctPart(obj1);
-          const model2 = createDuctPart(obj2);
-
+          // --- 修正: createDuctPart の前に null チェック済みなので ! を使っても安全 ---
+          const model1 = createDuctPart(obj1)!;
+          const model2 = createDuctPart(obj2)!;
+          // -------------------------------------------------------------------
           let conn1: Connector | IntersectionPoint | null = null;
-          if (model1) {
-              if (isP1Intersection) {
-                  conn1 = model1.getIntersectionPoints().find(p => p.id === p1_info.pointId) || null;
-              } else {
-                  conn1 = model1.getConnectors().find(p => p.id === p1_info.pointId) || null;
-              }
-          }
-
+          if (model1) { conn1 = (isP1Intersection ? model1.getIntersectionPoints() : model1.getConnectors()).find(p => p.id === p1_info.pointId) || null; }
           let conn2: Connector | IntersectionPoint | null = null;
-          if (model2) {
-               if (isP2Intersection) {
-                  conn2 = model2.getIntersectionPoints().find(p => p.id === p2_info.pointId) || null;
-              } else {
-                  conn2 = model2.getConnectors().find(p => p.id === p2_info.pointId) || null;
-              }
-          }
-
-          // 交差点でクリックされた場合のみ脚長を計算
+          if (model2) { conn2 = (isP2Intersection ? model2.getIntersectionPoints() : model2.getConnectors()).find(p => p.id === p2_info.pointId) || null; }
           const contribution1 = isP1Intersection ? getLegLength(obj1, conn1) : 0;
           const contribution2 = isP2Intersection ? getLegLength(obj2, conn2) : 0;
           lengthToSubtract = contribution1 + contribution2;
       }
-
-      // --- DimensionModal を開く ---
-      openDimensionModal({
-          p1: p1_info,
-          p2: p2_info,
-          measuredDistance: measuredDistance,
-          ductToUpdateId: ductToUpdate ? ductToUpdate.id : undefined,
-          lengthToSubtract: ductToUpdate ? lengthToSubtract : undefined,
-      });
-
-      // ポイントをクリア (モーダルを開いた後にクリア)
+      openDimensionModal({ p1: p1_info, p2: p2_info, measuredDistance: measuredDistance, ductToUpdateId: ductToUpdate ? ductToUpdate.id : undefined, lengthToSubtract: ductToUpdate ? lengthToSubtract : undefined });
       clearMeasurePoints();
+  }, [objects, openDimensionModal, clearMeasurePoints]);
 
-  }, [objects, openDimensionModal, clearMeasurePoints]); // objects, openDimensionModal, clearMeasurePoints を依存配列に追加
 
-
+  // --- Mouse Event Handlers (変更なし) ---
   const handleMouseDown = useCallback((e: MouseEvent) => {
     closeContextMenu();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const canvas = canvasRef.current; if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const screenPoint = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     const worldPoint = screenToWorld(screenPoint, canvas, camera);
-
     if (mode === 'measure') {
       const snapPoint = findSnapPoint(worldPoint, objects, camera);
       if (snapPoint) {
         const newMeasurePoints = [...measurePoints, snapPoint];
-        if (newMeasurePoints.length === 2) {
-          // --- 修正: processMeasurement を呼び出す ---
-          processMeasurement(newMeasurePoints[0], newMeasurePoints[1]);
-          // ----------------------------------------
-        } else {
-          addMeasurePoint(snapPoint); // 1点目を追加
-        }
-      }
-      return; // 計測モード時はオブジェクト選択やパンを行わない
+        if (newMeasurePoints.length === 2) { processMeasurement(newMeasurePoints[0], newMeasurePoints[1]); }
+        else { addMeasurePoint(snapPoint); }
+      } return;
     }
-
-    // --- Pan/Drag ロジック (変更なし) ---
     const clickedObject = getObjectAt(worldPoint, objects);
     selectObject(clickedObject ? clickedObject.id : null);
-
     if (clickedObject) {
       const initialPositions = new Map<number, Point>();
-      objects.forEach(obj => {
-        if (obj.groupId === clickedObject.groupId) {
-          initialPositions.set(obj.id, { x: obj.x, y: obj.y });
-        }
-      });
+      objects.forEach(obj => { if (obj.groupId === clickedObject.groupId) { initialPositions.set(obj.id, { x: obj.x, y: obj.y }); } });
       setDragState({ isDragging: true, targetId: clickedObject.id, initialPositions, offset: { x: worldPoint.x - clickedObject.x, y: worldPoint.y - clickedObject.y } });
       canvas.style.cursor = 'grabbing';
     } else {
@@ -308,73 +242,50 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
       lastMousePos.current = { x: e.clientX, y: e.clientY };
       canvas.style.cursor = 'grabbing';
     }
-  }, [
-      canvasRef, camera, objects, mode, measurePoints, selectObject,
-      closeContextMenu, addMeasurePoint, // clearMeasurePoints は processMeasurement に移動
-      // openDimensionModal も processMeasurement に移動
-      setDragState, setIsPanning, processMeasurement // processMeasurement を依存配列に追加
-  ]);
+  }, [ canvasRef, camera, objects, mode, measurePoints, selectObject, closeContextMenu, addMeasurePoint, setDragState, setIsPanning, processMeasurement ]);
 
-  // --- handleMouseMove, handleMouseUp, handleMouseLeave, handleWheel, handleDrop, handleDragOver (大きな変更なし) ---
-    const handleMouseMove = useCallback((e: MouseEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    const canvas = canvasRef.current; if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const screenPoint = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     const worldPoint = screenToWorld(screenPoint, canvas, camera);
     setMouseWorldPos(worldPoint);
-
     if (dragState.isDragging && dragState.targetId && dragState.initialPositions) {
       closeContextMenu();
-      const initialTargetPos = dragState.initialPositions.get(dragState.targetId);
-      if (!initialTargetPos) return;
+      const initialTargetPos = dragState.initialPositions.get(dragState.targetId); if (!initialTargetPos) return;
       const total_dx = (worldPoint.x - dragState.offset.x) - initialTargetPos.x;
       const total_dy = (worldPoint.y - dragState.offset.y) - initialTargetPos.y;
       setObjects(prev => prev.map(o => {
         if (dragState.initialPositions!.has(o.id)) {
           const initialPos = dragState.initialPositions!.get(o.id)!;
           return { ...o, x: initialPos.x + total_dx, y: initialPos.y + total_dy };
-        }
-        return o;
-      }));
-      return;
+        } return o;
+      })); return;
     }
-
     if (isPanning) {
-      const dx = e.clientX - lastMousePos.current.x;
-      const dy = e.clientY - lastMousePos.current.y;
-      setCamera({ x: camera.x + dx / camera.zoom, y: camera.y + dy / camera.zoom });
+      const dx = e.clientX - lastMousePos.current.x; const dy = e.clientY - lastMousePos.current.y;
+      setCamera({ x: camera.x - dx / camera.zoom, y: camera.y - dy / camera.zoom }); // Invert dx/dy for panning
       lastMousePos.current = { x: e.clientX, y: e.clientY };
     }
-  }, [
-      canvasRef, camera, setMouseWorldPos, closeContextMenu, setObjects,
-      setCamera, dragState, isPanning
-  ]);
+  }, [ canvasRef, camera, setMouseWorldPos, closeContextMenu, setObjects, setCamera, dragState, isPanning ]);
 
   const handleMouseUp = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const canvas = canvasRef.current; if (!canvas) return;
     let wasDragging = false;
     if (dragState.isDragging && dragState.targetId) {
         wasDragging = true;
-        const currentObjects = objects;
-        const draggedObj = currentObjects.find(o => o.id === dragState.targetId);
+        const currentObjects = objects; const draggedObj = currentObjects.find(o => o.id === dragState.targetId);
         if (draggedObj) {
             const snap = findBestSnap(draggedObj.groupId, currentObjects);
-            let connectionMade = false;
-            let finalObjects = currentObjects;
+            let connectionMade = false; let finalObjects = currentObjects;
             if (snap && snap.otherObj) {
-                connectionMade = true;
-                const draggedGroupId = draggedObj.groupId;
-                const groupToMergeId = snap.otherObj.groupId;
+                connectionMade = true; const draggedGroupId = draggedObj.groupId; const groupToMergeId = snap.otherObj.groupId;
                 finalObjects = currentObjects.map(o => {
                     let newObj = { ...o };
                     if (o.groupId === draggedGroupId) { newObj.x += snap.dx; newObj.y += snap.dy; }
                     if (newObj.groupId === groupToMergeId) { newObj.groupId = draggedGroupId; }
                     return newObj;
-                });
-                setObjects(finalObjects);
+                }); setObjects(finalObjects);
             }
             const initialPos = dragState.initialPositions?.get(dragState.targetId);
             const finalTargetObj = finalObjects.find(o => o.id === dragState.targetId);
@@ -391,11 +302,7 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
         setDragState({ isDragging: false, targetId: null, initialPositions: null, offset: { x: 0, y: 0 } });
         canvas.style.cursor = 'grab';
     }
-  }, [
-      camera, objects, dragState, isPanning, findBestSnap, setObjects,
-      saveState, openContextMenu, worldToScreen, canvasRef,
-      setIsPanning, setDragState
-  ]);
+  }, [ camera, objects, dragState, isPanning, findBestSnap, setObjects, saveState, openContextMenu, worldToScreen, canvasRef, setIsPanning, setDragState ]);
 
   const handleMouseLeave = useCallback(() => {
       setMouseWorldPos(null);
@@ -408,32 +315,113 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
     const zoomIntensity = 0.1;
     const delta = e.deltaY > 0 ? -1 : 1;
     const zoomFactor = Math.exp(delta * zoomIntensity);
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const canvas = canvasRef.current; if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const screenPoint = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     const worldPosBeforeZoom = screenToWorld(screenPoint, canvas, camera);
     const newZoom = Math.max(0.1, Math.min(camera.zoom * zoomFactor, 10));
-    const newCameraX = worldPosBeforeZoom.x - (screenPoint.x - rect.width / 2) / newZoom + rect.width / 2;
-    const newCameraY = worldPosBeforeZoom.y - (screenPoint.y - rect.height / 2) / newZoom + rect.height / 2;
+    // Calculate new camera position to keep mouse pointer stationary in world coordinates
+    const newCameraX = camera.x + (worldPosBeforeZoom.x - camera.x) * (1 - zoomFactor);
+    const newCameraY = camera.y + (worldPosBeforeZoom.y - camera.y) * (1 - zoomFactor);
+
     setCamera({ zoom: newZoom, x: newCameraX, y: newCameraY });
   }, [camera, closeContextMenu, setCamera, canvasRef]);
 
+  // --- Touch Event Handlers (変更なし) ---
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+      e.preventDefault(); closeContextMenu();
+      const canvas = canvasRef.current; if (!canvas) return;
+      const touches = e.touches;
+      if (touches.length === 2) {
+          setIsPinching(true); setIsPanning(false); setDragState(prev => ({ ...prev, isDragging: false }));
+          const t1 = touches[0]; const t2 = touches[1];
+          initialPinchDist.current = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+          const rect = canvas.getBoundingClientRect();
+          lastPinchMidpoint.current = { x: (t1.clientX + t2.clientX) / 2 - rect.left, y: (t1.clientY + t2.clientY) / 2 - rect.top };
+          canvas.style.cursor = 'move';
+      } else if (touches.length === 1 && !isPinching) {
+          const touch = touches[0]; const rect = canvas.getBoundingClientRect();
+          const screenPoint = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+          const worldPoint = screenToWorld(screenPoint, canvas, camera);
+          if (mode === 'measure') {
+              const snapPoint = findSnapPoint(worldPoint, objects, camera);
+              if (snapPoint) {
+                  const newMeasurePoints = [...measurePoints, snapPoint];
+                  if (newMeasurePoints.length === 2) { processMeasurement(newMeasurePoints[0], newMeasurePoints[1]); }
+                  else { addMeasurePoint(snapPoint); }
+              } return;
+          }
+          const clickedObject = getObjectAt(worldPoint, objects);
+          selectObject(clickedObject ? clickedObject.id : null);
+          if (clickedObject) {
+              const initialPositions = new Map<number, Point>();
+              objects.forEach(obj => { if (obj.groupId === clickedObject.groupId) { initialPositions.set(obj.id, { x: obj.x, y: obj.y }); } });
+              setDragState({ isDragging: true, targetId: clickedObject.id, initialPositions, offset: { x: worldPoint.x - clickedObject.x, y: worldPoint.y - clickedObject.y } });
+              canvas.style.cursor = 'grabbing';
+          } else {
+              setIsPanning(true); lastMousePos.current = { x: touch.clientX, y: touch.clientY }; canvas.style.cursor = 'grabbing';
+          }
+      }
+  }, [canvasRef, camera, objects, mode, measurePoints, isPinching, selectObject, closeContextMenu, addMeasurePoint, setDragState, setIsPanning, processMeasurement]);
+
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+      e.preventDefault(); const canvas = canvasRef.current; if (!canvas) return;
+      const touches = e.touches; const rect = canvas.getBoundingClientRect();
+      if (touches.length === 2 && isPinching) {
+          const t1 = touches[0]; const t2 = touches[1];
+          const newDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+          const midpointScreen = { x: (t1.clientX + t2.clientX) / 2 - rect.left, y: (t1.clientY + t2.clientY) / 2 - rect.top };
+          if (initialPinchDist.current > 0) {
+              const zoomFactor = newDist / initialPinchDist.current;
+              const worldPosBeforeZoom = screenToWorld(midpointScreen, canvas, camera);
+              const newZoomUncapped = camera.zoom * zoomFactor; const newZoom = Math.max(0.1, Math.min(newZoomUncapped, 10));
+              const actualZoomFactor = newZoom / camera.zoom;
+              const newCameraX = camera.x + (worldPosBeforeZoom.x - camera.x) * (1 - actualZoomFactor);
+              const newCameraY = camera.y + (worldPosBeforeZoom.y - camera.y) * (1 - actualZoomFactor);
+               let panDX = 0; let panDY = 0;
+              if(lastPinchMidpoint.current) { panDX = (midpointScreen.x - lastPinchMidpoint.current.x); panDY = (midpointScreen.y - lastPinchMidpoint.current.y); }
+              setCamera({ zoom: newZoom, x: newCameraX - panDX / newZoom, y: newCameraY - panDY / newZoom });
+          }
+          initialPinchDist.current = newDist; lastPinchMidpoint.current = midpointScreen;
+      } else if (touches.length === 1 && !isPinching) {
+          const touch = touches[0]; const screenPoint = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+          const worldPoint = screenToWorld(screenPoint, canvas, camera); setMouseWorldPos(worldPoint);
+          if (dragState.isDragging && dragState.targetId && dragState.initialPositions) {
+              closeContextMenu(); const initialTargetPos = dragState.initialPositions.get(dragState.targetId); if (!initialTargetPos) return;
+              const total_dx = (worldPoint.x - dragState.offset.x) - initialTargetPos.x; const total_dy = (worldPoint.y - dragState.offset.y) - initialTargetPos.y;
+              setObjects(prev => prev.map(o => {
+                  if (dragState.initialPositions!.has(o.id)) { const initialPos = dragState.initialPositions!.get(o.id)!; return { ...o, x: initialPos.x + total_dx, y: initialPos.y + total_dy }; } return o;
+              })); return;
+          }
+          if (isPanning) {
+              const dx = touch.clientX - lastMousePos.current.x; const dy = touch.clientY - lastMousePos.current.y;
+              setCamera({ x: camera.x - dx / camera.zoom, y: camera.y - dy / camera.zoom });
+              lastMousePos.current = { x: touch.clientX, y: touch.clientY };
+          }
+      }
+  }, [canvasRef, camera, isPinching, dragState, isPanning, closeContextMenu, setObjects, setCamera, setMouseWorldPos]);
+
+  const handleTouchEnd = useCallback((e: TouchEvent) => {
+      const canvas = canvasRef.current; if (!canvas) return;
+      if (isPinching) {
+          if (e.touches.length < 2) { setIsPinching(false); initialPinchDist.current = 0; lastPinchMidpoint.current = null; canvas.style.cursor = 'grab'; }
+          return;
+      }
+      let wasDragging = false;
+      if (dragState.isDragging && dragState.targetId) { wasDragging = true; handleMouseUp(); }
+      else if (isPanning) { setIsPanning(false); canvas.style.cursor = 'grab'; }
+      if (!wasDragging && !isPanning) { setDragState({ isDragging: false, targetId: null, initialPositions: null, offset: { x: 0, y: 0 } }); canvas.style.cursor = 'grab'; }
+  }, [isPinching, dragState, isPanning, handleMouseUp, setIsPanning, setDragState]);
+
+  // --- Drop Handlers (変更なし) ---
   const handleDrop = useCallback((e: DragEvent) => {
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const itemJson = e.dataTransfer?.getData('application/json');
-    if (!itemJson) return;
+    e.preventDefault(); const canvas = canvasRef.current; if (!canvas) return;
+    const itemJson = e.dataTransfer?.getData('application/json'); if (!itemJson) return;
     try {
         const item = JSON.parse(itemJson) as FittingItem;
-        const rect = canvas.getBoundingClientRect();
-        const screenPoint = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-        const worldPoint = screenToWorld(screenPoint, canvas, camera);
-        const systemNameInput = document.getElementById('system-name') as HTMLInputElement | null;
-        const diameterInput = document.getElementById('custom-diameter') as HTMLInputElement | null;
-        const systemName = systemNameInput?.value || 'SYS';
-        const defaultDiameter = diameterInput ? parseInt(diameterInput.value, 10) : 100;
+        const rect = canvas.getBoundingClientRect(); const screenPoint = { x: e.clientX - rect.left, y: e.clientY - rect.top }; const worldPoint = screenToWorld(screenPoint, canvas, camera);
+        const systemNameInput = document.getElementById('system-name') as HTMLInputElement | null; const diameterInput = document.getElementById('custom-diameter') as HTMLInputElement | null;
+        const systemName = systemNameInput?.value || 'SYS'; const defaultDiameter = diameterInput ? parseInt(diameterInput.value, 10) : 100;
         let newPart: Partial<AnyDuctPart> & { id: number, groupId: number, x: number, y: number, type: DuctPartType } = {
           id: Date.now(), groupId: Date.now(), x: worldPoint.x, y: worldPoint.y, rotation: 0, isSelected: false, isFlipped: false, systemName: systemName, name: item.name || 'Unnamed', type: item.type, diameter: item.diameter || defaultDiameter,
         };
@@ -452,15 +440,11 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
         saveState();
     } catch (error) { console.error("Drop failed:", error); }
   }, [canvasRef, camera, addObject, saveState]);
+  const handleDragOver = useCallback((e: DragEvent) => { e.preventDefault(); if (e.dataTransfer) { e.dataTransfer.dropEffect = 'copy'; } }, []);
 
-  const handleDragOver = useCallback((e: DragEvent) => {
-      e.preventDefault();
-      if (e.dataTransfer) { e.dataTransfer.dropEffect = 'copy'; }
-  }, []);
-
+  // --- useEffect for Event Listeners (変更なし) ---
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const canvas = canvasRef.current; if (!canvas) return;
     canvas.addEventListener('mousedown', handleMouseDown);
     canvas.addEventListener('mouseup', handleMouseUp);
     canvas.addEventListener('mouseleave', handleMouseLeave);
@@ -468,6 +452,10 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
     canvas.addEventListener('wheel', handleWheel, { passive: false });
     canvas.addEventListener('dragover', handleDragOver);
     canvas.addEventListener('drop', handleDrop);
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd);
+    canvas.addEventListener('touchcancel', handleTouchEnd);
     return () => {
       canvas.removeEventListener('mousedown', handleMouseDown);
       canvas.removeEventListener('mouseup', handleMouseUp);
@@ -476,27 +464,23 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
       canvas.removeEventListener('wheel', handleWheel);
       canvas.removeEventListener('dragover', handleDragOver);
       canvas.removeEventListener('drop', handleDrop);
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+      canvas.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [canvasRef, handleMouseDown, handleMouseUp, handleMouseMove, handleMouseLeave, handleWheel, handleDrop, handleDragOver]);
+  }, [canvasRef, handleMouseDown, handleMouseUp, handleMouseMove, handleMouseLeave, handleWheel, handleDrop, handleDragOver, handleTouchStart, handleTouchMove, handleTouchEnd]);
 
+  // --- Pending Action (変更なし) ---
   const [pendingAction, setPendingAction] = useAtom(pendingActionAtom);
   useEffect(() => {
     if (pendingAction === 'add-straight-duct-at-center') {
-      const canvas = canvasRef.current;
-      if (!canvas) { setPendingAction(null); return; }
-      const rect = canvas.getBoundingClientRect();
-      const canvasCenterScreen = { x: rect.width / 2, y: rect.height / 2 };
-      const worldCenter = screenToWorld(canvasCenterScreen, canvas, camera);
-      const systemNameInput = document.getElementById('system-name') as HTMLInputElement | null;
-      const diameterInput = document.getElementById('custom-diameter') as HTMLInputElement | null;
-      const systemName = systemNameInput?.value || 'SYS';
-      const diameter = diameterInput ? parseInt(diameterInput.value, 10) : 100;
-      const newDuct: StraightDuct = {
-        id: Date.now(), groupId: Date.now(), type: DuctPartType.Straight, x: worldCenter.x, y: worldCenter.y, length: 400, diameter: diameter, name: `直管 D${diameter}`, rotation: 0, systemName: systemName, isSelected: false, isFlipped: false,
-      };
-      addObject(newDuct);
-      saveState();
-      setPendingAction(null);
+      const canvas = canvasRef.current; if (!canvas) { setPendingAction(null); return; }
+      const rect = canvas.getBoundingClientRect(); const canvasCenterScreen = { x: rect.width / 2, y: rect.height / 2 }; const worldCenter = screenToWorld(canvasCenterScreen, canvas, camera);
+      const systemNameInput = document.getElementById('system-name') as HTMLInputElement | null; const diameterInput = document.getElementById('custom-diameter') as HTMLInputElement | null;
+      const systemName = systemNameInput?.value || 'SYS'; const diameter = diameterInput ? parseInt(diameterInput.value, 10) : 100;
+      const newDuct: StraightDuct = { id: Date.now(), groupId: Date.now(), type: DuctPartType.Straight, x: worldCenter.x, y: worldCenter.y, length: 400, diameter: diameter, name: `直管 D${diameter}`, rotation: 0, systemName: systemName, isSelected: false, isFlipped: false };
+      addObject(newDuct); saveState(); setPendingAction(null);
     }
   }, [pendingAction, canvasRef, camera, addObject, setPendingAction, saveState]);
 };

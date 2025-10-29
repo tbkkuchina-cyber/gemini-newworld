@@ -368,7 +368,7 @@ export function drawAllSnapPoints(ctx: CanvasRenderingContext2D, objects: AnyDuc
 }
 
 // drawMeasureTool remains the same for now, but uses zoom-adjusted sizes implicitly via camera in useCanvas
-export function drawMeasureTool(ctx: CanvasRenderingContext2D, measurePointsSnap: SnapPoint[], mouseWorldPos: Point | null, camera: Camera) {
+export function drawMeasureTool(ctx: CanvasRenderingContext2D, measurePointsSnap: SnapPoint[], mouseWorldPos: Point | null, camera: Camera, objects: AnyDuctPart[]) {
     if (measurePointsSnap.length === 0 && !mouseWorldPos) return;
 
     ctx.save();
@@ -384,10 +384,7 @@ export function drawMeasureTool(ctx: CanvasRenderingContext2D, measurePointsSnap
 
     // Highlight the snap point under the cursor if measuring
     if (mouseWorldPos && measurePointsSnap.length < 2) {
-        // --- FIX: Pass objects to findNearestConnector ---
-        const objectsForSnap = []; // Assuming objects are not available here, need to pass them
-        const snapHighlight = findNearestConnector(mouseWorldPos, objectsForSnap, camera);
-        // -------------------------------------------------
+        const snapHighlight = findNearestConnector(mouseWorldPos, objects, camera); // Re-use findNearestConnector logic if available globally or pass objects
         if (snapHighlight) {
              currentPos = snapHighlight; // Use the snapped point for drawing the line end
              ctx.save();
