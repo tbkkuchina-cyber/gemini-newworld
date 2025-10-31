@@ -36,14 +36,12 @@ export const isFittingsModalOpenAtom = atom<boolean>(false);
 export const nextIdAtom = atom<number>(0);
 export const pendingActionAtom = atom<string | null>(null);
 
-// --- Notification Atom (新規追加) ---
+// --- Notification Atom (変更なし) ---
 export const notificationAtom = atom<{ message: string, id: number } | null>(null);
-// Write-only atom to show a notification for 3 seconds
 export const showNotificationAtom = atom(null, (get, set, message: string) => {
     const id = Date.now();
     set(notificationAtom, { message, id });
     setTimeout(() => {
-        // Clear notification only if it's the same one
         if (get(notificationAtom)?.id === id) {
             set(notificationAtom, null);
         }
@@ -105,7 +103,7 @@ export const redoAtom = atom(null, (get, set) => {
     }
 });
 
-// --- addObjectAtom, clearCanvasAtom, deleteSelectedObjectAtom (変更なし) ---
+// --- addObjectAtom, clearCanvasAtom (変更なし) ---
 export const addObjectAtom = atom(null, (get, set, part: AnyDuctPart) => {
   // Assign unique ID if not present (might be needed if adding default items)
   const newId = part.id || Date.now();
@@ -120,59 +118,216 @@ export const clearCanvasAtom = atom(null, (get, set) => {
     set(closeContextMenuAtom);
     set(saveStateAtom);
 });
+
+// --- [追加] グループ再計算ロジック ---
+/**
+ * 指定されたオブジェクト配列 (subset) 内の接続を再評価し、
+ * 新しい groupId を割り当てて更新された配列を返します。
+ * @param subset - グループを再計算するオブジェクトの配列
+ * @param allObjects - キャンバス上のすべてのオブジェクト（接続判定用）
+ * @returns 更新された groupId を持つ subset のオブジェクト配列
+ */
+const recalculateGroups = (subset: AnyDuctPart[], allObjects: AnyDuctPart[]): AnyDuctPart[] => {
+    const visited = new Set<number>();
+    const updatedSubset: AnyDuctPart[] = [];
+    const subsetMap = new Map(subset.map(o => [o.id, { ...o }])); // 作業用コピー
+
+    for (const startObj of subset) {
+        if (!visited.has(startObj.id)) {
+            const newGroupId = startObj.id; // 新しいグループの代表ID
+            const queue = [startObj.id];
+            visited.add(startObj.id);
+            subsetMap.get(startObj.id)!.groupId = newGroupId;
+
+            let head = 0;
+            while (head < queue.length) {
+                const currentId = queue[head++];
+                const currentObj = allObjects.find(o => o.id === currentId); // allObjects から参照
+                const currentModel = currentObj ? createDuctPart(currentObj) : null;
+                if (!currentModel) continue;
+
+                for (const neighborId of subsetMap.keys()) { // subsetMap 内の未訪問オブジェクトを探す
+                    if (!visited.has(neighborId)) {
+                        const neighborObj = allObjects.find(o => o.id === neighborId); // allObjects から参照
+                        const neighborModel = neighborObj ? createDuctPart(neighborObj) : null;
+                        if (!neighborModel) continue;
+
+                        // Check connection between currentModel and neighborModel
+                        const isConnected = currentModel.getConnectors().some(c1 =>
+                            neighborModel.getConnectors().some(c2 => Math.hypot(c1.x - c2.x, c1.y - c2.y) < 1)
+                        );
+
+                        if (isConnected) {
+                            visited.add(neighborId);
+                            subsetMap.get(neighborId)!.groupId = newGroupId;
+                            queue.push(neighborId);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // subsetMap の値 (更新されたオブジェクト) を配列にして返す
+    return Array.from(subsetMap.values());
+};
+
+// --- [修正] deleteSelectedObjectAtom にグループ再計算を追加 ---
 export const deleteSelectedObjectAtom = atom(null, (get, set) => {
   const selectedId = get(selectedObjectIdAtom);
   if (selectedId !== null) {
-    const deletedGroupId = get(objectsAtom).find(o => o.id === selectedId)?.groupId;
-    set(objectsAtom, (prev) => prev.filter(o => o.id !== selectedId));
-    // Remove dimensions connected to the deleted object
+    const allCurrentObjects = get(objectsAtom);
+    const objectToDelete = allCurrentObjects.find(o => o.id === selectedId);
+    if (!objectToDelete) return;
+
+    const deletedGroupId = objectToDelete.groupId;
+
+    // オブジェクトを削除
+    const objectsAfterDelete = allCurrentObjects.filter(o => o.id !== selectedId);
+
+    // 元のグループに属していた他のオブジェクトを取得
+    const remainingInGroup = objectsAfterDelete.filter(o => o.groupId === deletedGroupId);
+
+    if (remainingInGroup.length > 0) {
+      // グループ再計算を実行
+      const recalculatedGroup = recalculateGroups(remainingInGroup, objectsAfterDelete);
+
+      // 再計算結果をマージ
+      const finalObjects = objectsAfterDelete.map(obj => {
+        const recalculatedVersion = recalculatedGroup.find(r => r.id === obj.id);
+        return recalculatedVersion || obj; // 再計算されたものがあれば置き換え
+      });
+      set(objectsAtom, finalObjects);
+    } else {
+      // 削除対象しかグループにいなかった場合
+      set(objectsAtom, objectsAfterDelete);
+    }
+
+    // 関連する寸法線を削除
     set(dimensionsAtom, prev => prev.filter(d => d.p1_objId !== selectedId && d.p2_objId !== selectedId));
+
     set(selectedObjectIdAtom, null);
     set(closeContextMenuAtom);
-    // Optional: Recalculate groups if the deleted object was part of a larger group
-    // This requires a more complex group recalculation logic similar to the original JS
     set(saveStateAtom);
   }
 });
 
-// --- rotateSelectedObjectAtom, flipSelectedObjectAtom, disconnectSelectedObjectAtom (変更なし) ---
+
+// --- [修正] rotateSelectedObjectAtom にグループ回転ロジックを追加 ---
 export const rotateSelectedObjectAtom = atom(null, (get, set) => {
     const selectedId = get(selectedObjectIdAtom);
     if (selectedId !== null) {
-        set(objectsAtom, prev => prev.map(o => {
-            if (o.id === selectedId) {
-                const model = createDuctPart(o);
-                if (model) { model.rotate(); return { ...model } as AnyDuctPart; }
-            }
-            return o;
-        }));
+        const currentObjects = get(objectsAtom);
+        const selectedObj = currentObjects.find(o => o.id === selectedId);
+        if (!selectedObj) return;
+
+        const groupId = selectedObj.groupId;
+        const groupObjects = currentObjects.filter(obj => obj.groupId === groupId);
+        const rotationAngle = 45; // Degrees
+
+        let updatedObjects: AnyDuctPart[];
+
+        if (groupObjects.length > 1) {
+            // Group rotation
+            let sumX = 0;
+            let sumY = 0;
+            groupObjects.forEach(obj => { sumX += obj.x; sumY += obj.y; });
+            const centerX = sumX / groupObjects.length;
+            const centerY = sumY / groupObjects.length;
+
+            const rad = rotationAngle * Math.PI / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+
+            updatedObjects = currentObjects.map(obj => {
+                if (obj.groupId === groupId) {
+                    const dx = obj.x - centerX;
+                    const dy = obj.y - centerY;
+                    const newX = centerX + (dx * cos - dy * sin);
+                    const newY = centerY + (dx * sin + dy * cos);
+                    const newRotation = (obj.rotation + rotationAngle + 360) % 360; // Ensure positive rotation
+                    return { ...obj, x: newX, y: newY, rotation: newRotation };
+                }
+                return obj;
+            });
+        } else {
+            // Single object rotation (use model's rotate method if available)
+            updatedObjects = currentObjects.map(o => {
+                if (o.id === selectedId) {
+                    const model = createDuctPart(o);
+                    if (model) {
+                        model.rotate(); // Use the model's specific rotation logic
+                        // Return a *new* object based on the model's updated state
+                        return {
+                            ...o, // Copy existing properties
+                            x: model.x, // Use potentially updated position from model? (Original only changed rotation)
+                            y: model.y,
+                            rotation: model.rotation,
+                            isFlipped: model.isFlipped // Keep flip state consistent if model.rotate modifies it
+                        } as AnyDuctPart;
+                    }
+                }
+                return o;
+            });
+        }
+
+        set(objectsAtom, updatedObjects);
         set(saveStateAtom);
     }
 });
+
+// --- flipSelectedObjectAtom (変更なし) ---
 export const flipSelectedObjectAtom = atom(null, (get, set) => {
     const selectedId = get(selectedObjectIdAtom);
     if (selectedId !== null) {
         set(objectsAtom, prev => prev.map(o => {
             if (o.id === selectedId) {
                 const model = createDuctPart(o);
-                if (model) { model.flip(); return { ...model } as AnyDuctPart; }
+                if (model) { model.flip(); return { ...o, isFlipped: model.isFlipped, diameter: model.diameter, diameter2: (model as any).diameter2 } as AnyDuctPart; } // Return new object with updated flip state and potentially swapped diameters for reducer
             }
             return o;
         }));
         set(saveStateAtom);
     }
 });
+
+// --- [修正] disconnectSelectedObjectAtom にグループ再計算を追加 ---
 export const disconnectSelectedObjectAtom = atom(null, (get, set) => {
     const selectedId = get(selectedObjectIdAtom);
     if (selectedId !== null) {
-        // Simple disconnect: give the object its own group ID
-        set(objectsAtom, prev => prev.map(o =>
+        const allCurrentObjects = get(objectsAtom);
+        const objectToDisconnect = allCurrentObjects.find(o => o.id === selectedId);
+        if (!objectToDisconnect) return;
+
+        const oldGroupId = objectToDisconnect.groupId;
+
+        // 1. 対象オブジェクトを新しいグループに移動
+        const objectsWithDisconnected = allCurrentObjects.map(o =>
             o.id === selectedId ? { ...o, groupId: o.id } : o
-        ));
-        // TODO: Implement group recalculation for the remaining parts of the original group
+        );
+
+        // 2. 元のグループに残ったオブジェクトを取得
+        const remainingInGroup = objectsWithDisconnected.filter(o => o.groupId === oldGroupId && o.id !== selectedId);
+
+        if (remainingInGroup.length > 0) {
+            // 3. 残ったオブジェクトのグループを再計算
+            const recalculatedGroup = recalculateGroups(remainingInGroup, objectsWithDisconnected);
+
+            // 4. 再計算結果をマージ
+            const finalObjects = objectsWithDisconnected.map(obj => {
+                const recalculatedVersion = recalculatedGroup.find(r => r.id === obj.id);
+                return recalculatedVersion || obj;
+            });
+            set(objectsAtom, finalObjects);
+        } else {
+            // 元のグループに他にオブジェクトがなかった場合
+            set(objectsAtom, objectsWithDisconnected);
+        }
+
         set(saveStateAtom);
+        set(closeContextMenuAtom); // コンテキストメニューを閉じる
     }
 });
+
 
 // --- Dimension Helper (変更なし) ---
 const getDimensionKey = (dim: Pick<Dimension, 'p1_objId' | 'p1_pointId' | 'p1_pointType' | 'p2_objId' | 'p2_pointId' | 'p2_pointType'>): string => {
@@ -196,14 +351,14 @@ export const addOrUpdateDimensionAtom = atom(null, (get, set, dimensionData: Omi
     }
 });
 
-// --- addDimensionAtom (変更なし) ---
+// --- addDimensionAtom -> addOrUpdateDimensionAtom を使い、 saveState を呼ぶように修正 ---
 export const addDimensionAtom = atom(null, (get, set, dimensionData: Omit<Dimension, 'id'>) => {
     set(addOrUpdateDimensionAtom, dimensionData);
-    set(saveStateAtom);
+    set(saveStateAtom); // 履歴を保存
 });
 
 
-// --- updateStraightDuctLengthAtom の定義 (ロジック実装) ---
+// --- updateStraightDuctLengthAtom (変更なし) ---
 interface UpdateStraightDuctLengthPayload {
     totalDistance: number;
     ductToUpdateId: number;
@@ -227,46 +382,38 @@ export const updateStraightDuctLengthAtom = atom(
 
         const finalDuctLength = totalDistance - lengthToSubtract;
 
-        // --- エラーチェック ---
         if (finalDuctLength < 0) {
             console.error(`Calculation error: Final duct length is negative (${finalDuctLength.toFixed(1)}mm). Aborting update.`);
             set(showNotificationAtom, `計算エラー: 直管長がマイナス(${finalDuctLength.toFixed(1)}mm)になります。`);
             return;
         }
 
-        // --- 移動ロジックの実装 ---
         const ductModel = createDuctPart(ductToUpdate);
-        if (!ductModel) return; // Should not happen
+        if (!ductModel) return;
 
         const ductConns = ductModel.getConnectors();
-        if (ductConns.length !== 2) return; // Straight duct should have 2 connectors
+        if (ductConns.length !== 2) return;
 
-        // 1. 固定点 (anchor) と移動点 (moving) を決定
-        // p1_info (計測始点) に近い方のコネクタを固定点とする
         const distToConn0 = Math.hypot(p1_info.x - ductConns[0].x, p1_info.y - ductConns[0].y);
         const distToConn1 = Math.hypot(p1_info.x - ductConns[1].x, p1_info.y - ductConns[1].y);
         const anchorConnPoint = distToConn0 < distToConn1 ? ductConns[0] : ductConns[1];
         const movingConnPoint = distToConn0 < distToConn1 ? ductConns[1] : ductConns[0];
         const oldLength = ductToUpdate.length;
 
-        // 2. 移動方向ベクトルと移動距離を計算
-        // length が 0 の場合も考慮 (ほぼ起こらないはずだが念のため)
         const direction = (oldLength > 0.1)
             ? { x: (movingConnPoint.x - anchorConnPoint.x) / oldLength, y: (movingConnPoint.y - anchorConnPoint.y) / oldLength }
-            : { x: Math.cos(ductToUpdate.rotation * Math.PI / 180), y: Math.sin(ductToUpdate.rotation * Math.PI / 180) }; // 長さ0なら回転角度から方向を推定
+            : { x: Math.cos(ductToUpdate.rotation * Math.PI / 180), y: Math.sin(ductToUpdate.rotation * Math.PI / 180) };
 
         const lengthChange = finalDuctLength - oldLength;
         const dx = direction.x * lengthChange;
         const dy = direction.y * lengthChange;
 
-        // 3. 移動対象オブジェクト群を特定 (BFS)
-        const objectsToMove = new Set<number>(); // 移動対象の ID を格納
-        const queue: number[] = []; // 探索キュー (ID を格納)
+        const objectsToMove = new Set<number>();
+        const queue: number[] = [];
 
-        // 移動点に接続されているオブジェクトを探す (ductToUpdate 自身は除く)
         const connectedObjects = currentObjects.filter(o =>
             o.id !== ductToUpdateId &&
-            o.groupId === ductToUpdate.groupId && // 同じグループに属している
+            o.groupId === ductToUpdate.groupId &&
             createDuctPart(o)?.getConnectors().some(c => Math.hypot(c.x - movingConnPoint.x, c.y - movingConnPoint.y) < 1)
         );
 
@@ -277,7 +424,6 @@ export const updateStraightDuctLengthAtom = atom(
             }
         });
 
-        // BFS で接続されているオブジェクトを辿る
         let head = 0;
         while(head < queue.length) {
             const currentId = queue[head++];
@@ -286,16 +432,12 @@ export const updateStraightDuctLengthAtom = atom(
             if (!currentModel) continue;
 
             for (const neighbor of currentObjects) {
-                // 自分自身、更新対象の直管、既に追加済みのオブジェクトはスキップ
                 if (neighbor.id === currentId || neighbor.id === ductToUpdateId || objectsToMove.has(neighbor.id)) continue;
-
-                // 同じグループに属しているかチェック (必須)
                 if (neighbor.groupId !== currentObj?.groupId) continue;
 
                 const neighborModel = createDuctPart(neighbor);
                 if (!neighborModel) continue;
 
-                // currentModel のコネクタと neighborModel のコネクタが接続しているか確認
                 const isConnected = currentModel.getConnectors().some(c1 =>
                     neighborModel.getConnectors().some(c2 => Math.hypot(c1.x - c2.x, c1.y - c2.y) < 1)
                 );
@@ -307,36 +449,27 @@ export const updateStraightDuctLengthAtom = atom(
             }
         }
 
-        // 4. objectsAtom を更新
         const updatedObjects = currentObjects.map(obj => {
-            // 更新対象の直管
             if (obj.id === ductToUpdateId) {
-                // 新しい中心座標を計算: 固定点から新しい長さの半分だけ移動
                 const newCenterX = anchorConnPoint.x + direction.x * finalDuctLength / 2;
                 const newCenterY = anchorConnPoint.y + direction.y * finalDuctLength / 2;
                 return { ...obj, length: finalDuctLength, x: newCenterX, y: newCenterY } as AnyDuctPart;
             }
-            // 移動対象のオブジェクト
             if (objectsToMove.has(obj.id)) {
                 return { ...obj, x: obj.x + dx, y: obj.y + dy };
             }
-            // それ以外のオブジェクト
             return obj;
         });
         set(objectsAtom, updatedObjects);
 
-        // --- 寸法線の追加または更新 ---
         const newDimensionData: Omit<Dimension, 'id'> = {
             p1_objId: p1_info.objId, p1_pointId: p1_info.pointId, p1_pointType: p1_info.pointType,
             p2_objId: p2_info.objId, p2_pointId: p2_info.pointId, p2_pointType: p2_info.pointType,
-            value: totalDistance // 全長を寸法値として記録
+            value: totalDistance
         };
-        set(addOrUpdateDimensionAtom, newDimensionData);
+        set(addOrUpdateDimensionAtom, newDimensionData); // addDimensionAtom ではなくこちらを呼ぶ
 
-        // --- 履歴を保存 ---
         set(saveStateAtom);
-
-        // --- 成功通知 ---
         set(showNotificationAtom, `直管長を ${finalDuctLength.toFixed(1)} mmに更新しました。`);
     }
 );
@@ -356,7 +489,7 @@ export const confirmActionAtom = atom<(() => void) | null>(null);
 export const openConfirmModalAtom = atom(null, (get, set, { content, onConfirm }: { content: ConfirmModalContent, onConfirm: () => void }) => {
     set(isConfirmModalOpenAtom, true);
     set(confirmModalContentAtom, content);
-    set(confirmActionAtom, onConfirm);
+    set(confirmActionAtom, onConfirm); // 関数を直接セット
 });
 export const closeConfirmModalAtom = atom(null, (get, set) => {
     set(isConfirmModalOpenAtom, false);
@@ -372,8 +505,6 @@ export const loadFittingsAtom = atom(null, (get, set) => {
         console.error("Failed to load fittings:", error);
         set(fittingsAtom, getDefaultFittings());
     }
-    // Initial load should not save state immediately. Let first action do it.
-    // set(saveStateAtom);
 });
 export const saveFittingsAtom = atom(null, (get, set) => {
     if (typeof window === 'undefined') return;
@@ -396,19 +527,6 @@ export const openDimensionModalAtom = atom(null, (get, set, content: any) => {
 export const closeDimensionModalAtom = atom(null, (get, set) => {
     set(isDimensionModalOpenAtom, false);
     set(dimensionModalContentAtom, null);
-    // Clearing measure points moved to processMeasurement in useCanvasInteraction
-    // set(measurePointsAtom, []);
 });
 export const openFittingsModalAtom = atom(null, (get, set) => { set(isFittingsModalOpenAtom, true); });
 export const closeFittingsModalAtom = atom(null, (get, set) => { set(isFittingsModalOpenAtom, false); });
-
-// Utility function to check connection (needed for BFS)
-function isConnected(objA: AnyDuctPart, objB: AnyDuctPart): boolean {
-    const modelA = createDuctPart(objA);
-    const modelB = createDuctPart(objB);
-    if (!modelA || !modelB) return false;
-
-    return modelA.getConnectors().some(cA =>
-        modelB.getConnectors().some(cB => Math.hypot(cA.x - cB.x, cA.y - cB.y) < 1)
-    );
-}
