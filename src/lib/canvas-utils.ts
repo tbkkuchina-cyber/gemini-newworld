@@ -58,29 +58,20 @@ export function drawObjects(ctx: CanvasRenderingContext2D, objects: AnyDuctPart[
 // Coordinate and Hit-Test Functions
 // =================================================================================
 
-// ★★★ 修正点: screenToWorld の二重計算を削除 ★★★
+// screenToWorld (変更なし - 前回の修正を維持)
 export function screenToWorld(screenPoint: Point, canvas: HTMLCanvasElement, camera: Camera): Point {
-  // const rect = canvas.getBoundingClientRect(); // 削除 (呼び出し元で計算済み)
-  
-  // screenPoint.x は既に (clientX - rect.left) された値
   const cssX = screenPoint.x; 
   const cssY = screenPoint.y;
-  
-  // (rect.left/top を引くロジックを削除)
-  // const cssX = screenPoint.x - rect.left; 
-  // const cssY = screenPoint.y - rect.top; 
-  
   const canvasWidth = canvas.width; 
   const canvasHeight = canvas.height;
-
   const worldX = (cssX - canvasWidth / 2) / camera.zoom + (canvasWidth / 2 - camera.x);
   const worldY = (cssY - canvasHeight / 2) / camera.zoom + (canvasHeight / 2 - camera.y);
   return { x: worldX, y: worldY };
 }
 
-// worldToScreen (変更なし - ContextMenu で rect.left が必要なため)
+// ★★★ 修正点: worldToScreen から rect.left/top の加算を削除 ★★★
 export function worldToScreen(worldPoint: Point, canvas: HTMLCanvasElement, camera: Camera): Point {
-  const rect = canvas.getBoundingClientRect();
+  // const rect = canvas.getBoundingClientRect(); // 削除
   
   const canvasWidth = canvas.width; 
   const canvasHeight = canvas.height; 
@@ -88,8 +79,8 @@ export function worldToScreen(worldPoint: Point, canvas: HTMLCanvasElement, came
   const canvasX = (worldPoint.x - (canvasWidth / 2 - camera.x)) * camera.zoom + canvasWidth / 2;
   const canvasY = (worldPoint.y - (canvasHeight / 2 - camera.y)) * camera.zoom + canvasHeight / 2;
 
-  // ContextMenu が viewport 基準で配置されるため、 rect.left/top が必要
-  return { x: canvasX + rect.left, y: canvasY + rect.top };
+  // ContextMenu は canvas と同じ <main> を基準に配置されるため、rect.left/top は不要
+  return { x: canvasX, y: canvasY };
 }
 
 
@@ -158,7 +149,7 @@ export function findNearestConnector(worldPoint: Point, objects: AnyDuctPart[], 
 }
 
 
-// (getPointForDim, drawArrow は変更なし)
+// (getPointForDim, drawArrow, drawDimensions は変更なし - 前回のタイポ修正を維持)
 // ...
 function getPointForDim(objId: number, pointType: 'connector' | 'intersection', pointId: number | string, objects: AnyDuctPart[]): Point | null {
     const obj = objects.find(o => o.id === objId);
@@ -189,8 +180,6 @@ function drawArrow(ctx: CanvasRenderingContext2D, camera: Camera, fromX: number,
     ctx.closePath();
     ctx.fill();
 }
-
-// ★★★ 修正点: `a.1.x` を `a.p1.x` に修正 (ビルドエラー対応) ★★★
 export function drawDimensions(ctx: CanvasRenderingContext2D, dimensions: Dimension[], objects: AnyDuctPart[], camera: Camera) {
     ctx.save();
     ctx.strokeStyle = '#0284c7';
@@ -225,7 +214,6 @@ export function drawDimensions(ctx: CanvasRenderingContext2D, dimensions: Dimens
 
     for (const group of dimensionGroups.values()) {
         group.sort((a, b) => {
-            // ★★★ (タイポ `a.1.x` を `a.p1.x` に修正) ★★★
             const angle = Math.atan2(a.p2.y - a.p1.y, a.p2.x - a.p1.x); 
             const dirX = Math.cos(angle);
             const dirY = Math.sin(angle);
