@@ -302,9 +302,9 @@ export class AdjustableElbow extends DuctPart {
         const angle = this.isFlipped ? -this.angle : this.angle;
         const angleRad = angle * Math.PI / 180;
         const leg2X = this.legLength * Math.cos(angleRad / 2);
-        const leg2Y = -this.legLength * Math.sin(angleRad / 2);
+        const leg2Y = -this.legLength * Math.sin(angleRad / 2); // オリジナル同様 - を使用
         const leg1X = this.legLength * Math.cos(-angleRad / 2);
-        const leg1Y = -this.legLength * Math.sin(-angleRad / 2);
+        const leg1Y = -this.legLength * Math.sin(-angleRad / 2); // オリジナル同様 - を使用
         ctx.beginPath();
         ctx.moveTo(leg1X, leg1Y);
         ctx.lineTo(0, 0);
@@ -320,18 +320,23 @@ export class AdjustableElbow extends DuctPart {
         ctx.setLineDash([]);
         ctx.restore();
     }
+    
+    //
+    // ★★★ 修正点 ★★★
+    //
     getConnectors(): Connector[] {
         const rad = this.rotation * Math.PI / 180;
         const angle = this.isFlipped ? -this.angle : this.angle;
         const angleRad = angle * Math.PI / 180;
 
+        // (オリジナルに合わせてY座標にマイナスを追加)
         const c1_local = { 
             x: this.legLength * Math.cos(-angleRad / 2),
-            y: this.legLength * Math.sin(-angleRad / 2) 
+            y: -this.legLength * Math.sin(-angleRad / 2) 
         };
         const c2_local = {
             x: this.legLength * Math.cos(angleRad / 2),
-            y: this.legLength * Math.sin(angleRad / 2)
+            y: -this.legLength * Math.sin(angleRad / 2)
         };
 
         const rotate = (p: { x: number; y: number }) => ({ 
@@ -340,10 +345,13 @@ export class AdjustableElbow extends DuctPart {
         });
 
         return [
-            { id: 0, ...rotate(c1_local), angle: (this.rotation + 180 - angle / 2) % 360, diameter: this.diameter },
-            { id: 1, ...rotate(c2_local), angle: (this.rotation + angle / 2) % 360, diameter: this.diameter }
+            // (オリジナルに合わせて角度計算を修正)
+            { id: 0, ...rotate(c1_local), angle: (this.rotation + 180 + angle / 2) % 360, diameter: this.diameter },
+            { id: 1, ...rotate(c2_local), angle: (this.rotation - angle / 2 + 360) % 360, diameter: this.diameter }
         ];
     }
+    // ★★★ 修正ここまで ★★★
+
     rotate(): void {
         const angle = this.isFlipped ? -this.angle : this.angle;
         const offset = angle / 2;
@@ -361,6 +369,7 @@ export class AdjustableElbow extends DuctPart {
         const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
         const angle = this.isFlipped ? -this.angle : this.angle;
         const angleRad = angle * Math.PI / 180;
+        // (Y座標にマイナスが追加されていることを確認)
         const leg1_end = { x: this.legLength * Math.cos(-angleRad / 2), y: -this.legLength * Math.sin(-angleRad / 2) };
         const leg2_end = { x: this.legLength * Math.cos(angleRad / 2), y: -this.legLength * Math.sin(angleRad / 2) };
         const distToSegment = (p: { x: number; y: number }, v: { x: number; y: number }, w: { x: number; y: number }) => {

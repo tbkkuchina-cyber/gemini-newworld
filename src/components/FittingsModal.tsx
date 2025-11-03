@@ -214,8 +214,22 @@ const FittingsModal = () => {
             <h3 className="text-xl font-semibold mb-3 border-b pb-2">{category}</h3>
             <div className="overflow-x-auto">
                 <table className="w-full text-left table-auto border-collapse">
-                    <thead> <tr> {headers.map(header => ( <th key={header} className="p-2 text-sm font-semibold capitalize border-b-2">{headerLabelMap[header] || header}</th> ))} <th className="p-2 text-sm font-semibold border-b-2">削除</th> </tr> </thead>
-                    <tbody> {items.map((item, index) => ( <tr key={item.id} className="border-t"> {headers.map(header => renderEditableCell(item, index, header))} <td className="p-2 align-top"> <button onClick={() => handleDeleteRow(category, index)} className="text-red-500 hover:text-red-700 mt-1"> <Trash2 size={20} /> </button> </td> </tr> ))} </tbody>
+                    {/* [修正] <thead> と <tr> の間の空白を削除 */}
+                    <thead><tr>
+                        {headers.map(header => ( <th key={header} className="p-2 text-sm font-semibold capitalize border-b-2">{headerLabelMap[header] || header}</th> ))}
+                        <th className="p-2 text-sm font-semibold border-b-2">削除</th>
+                    </tr></thead>
+                    {/* [修正] <tbody> と {items.map...} の間の空白を削除 */}
+                    <tbody>{items.map((item, index) => (
+                        <tr key={item.id} className="border-t">
+                            {headers.map(header => renderEditableCell(item, index, header))}
+                            <td className="p-2 align-top">
+                                <button onClick={() => handleDeleteRow(category, index)} className="text-red-500 hover:text-red-700 mt-1">
+                                    <Trash2 size={20} />
+                                </button>
+                            </td>
+                        </tr>
+                    ))}</tbody>
                 </table>
             </div>
             <button onClick={() => handleAddRow(category)} className="mt-2 bg-gray-200 text-gray-700 px-3 py-1 rounded hover:bg-gray-300 text-sm"> <Plus size={16} className="inline-block mr-1" /> 行を追加 </button>

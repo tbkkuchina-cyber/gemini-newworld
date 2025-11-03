@@ -15,10 +15,11 @@ const CanvasArea = () => {
     if (!canvas) return;
 
     const resizeObserver = new ResizeObserver(() => {
-      const dpr = window.devicePixelRatio || 1;
+      // ★★★ 修正点: DPRスケーリングを削除 ★★★
+      // const dpr = window.devicePixelRatio || 1; // 削除
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
+      canvas.width = rect.width; // * dpr; // 削除 (CSSピクセルと内部解像度を一致させる)
+      canvas.height = rect.height; // * dpr; // 削除
     });
 
     resizeObserver.observe(canvas);
