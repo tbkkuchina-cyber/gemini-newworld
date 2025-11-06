@@ -2,9 +2,28 @@ import { atom } from 'jotai';
 import { AnyDuctPart, Camera, Point, Fittings, ConfirmModalContent, Dimension, SnapPoint, FittingItem, DuctPartType, DragState, StraightDuct, Connector, IntersectionPoint } from './types';
 import { getDefaultFittings } from './default-fittings';
 import { createDuctPart } from './duct-models';
-import { getPointForDim } from './canvas-utils'; // (インポートを維持)
+// ★★★ 修正点: canvas-utils からのインポートを削除 (循環参照の解消) ★★★
+// import { getPointForDim } from './canvas-utils'; 
 
 const FITTINGS_STORAGE_KEY = 'ductAppFittings';
+
+// ★★★ 修正点: getPointForDim をストア内にコピー ★★★
+// (updateStraightDuctLengthAtom が使用するために必要)
+function getPointForDim(objId: number, pointType: 'connector' | 'intersection', pointId: number | string, objects: AnyDuctPart[]): Point | null {
+    const obj = objects.find(o => o.id === objId);
+    if (!obj) return null;
+    const model = createDuctPart(obj);
+    if (!model) return null;
+
+    let point: Point | Connector | IntersectionPoint | undefined | null = null;
+    if (pointType === 'connector') {
+        point = model.getConnectors().find(p => p.id === pointId);
+    } else {
+        point = model.getIntersectionPoints().find(p => p.id === pointId);
+    }
+
+    return point ? { x: point.x, y: point.y } : null;
+};
 
 // --- Primitive Atoms ---
 export const objectsAtom = atom<AnyDuctPart[]>([]);
@@ -61,7 +80,7 @@ export const canUndoAtom = atom((get) => get(historyIndexAtom) > 0);
 export const canRedoAtom = atom((get) => get(historyIndexAtom) < get(historyAtom).length - 1);
 
 
-// --- ★★★ (ここからが前回答で途切れていた `straightRunDimensionsAtom` です) ★★★ ---
+// --- (自動計算される赤い補助線) ---
 const straightRunDimensionsAtom = atom((get): Dimension[] => {
     const objects = get(objectsAtom);
     const straightDucts = objects.filter(o => o.type === DuctPartType.Straight);
@@ -136,7 +155,7 @@ const straightRunDimensionsAtom = atom((get): Dimension[] => {
                     const endObject = connectedFitting || ductInComponent;
                     const endModel = createDuctPart(endObject)!;
                     
-                    // (ここからが途切れていた箇所です)
+                    // (ここからが途切れていた箇所)
                     const endPointInfo = connectedFitting 
                         ? { ...endModel.getConnectors().find(c => Math.hypot(c.x - connector.x, c.y - connector.y) < 1)!, objId: endObject.id, pointType: 'connector' as const } 
                         : { ...connector, objId: endObject.id, pointType: 'connector' as const };
@@ -171,8 +190,6 @@ export const allDimensionsAtom = atom((get) => {
     const autoRunDimensions = get(straightRunDimensionsAtom);
     return [...userDimensions, ...autoRunDimensions];
 });
-
-// --- ★★★ (ここまでが `straightRunDimensionsAtom` 関連) ★★★ ---
 
 
 // --- Write-only Atoms (Actions) ---
@@ -226,7 +243,6 @@ export const clearCanvasAtom = atom(null, (get, set) => {
     set(saveStateAtom);
 });
 
-// --- (recalculateGroups, deleteSelectedObjectAtom, rotateSelectedObjectAtom, flipSelectedObjectAtom, disconnectSelectedObjectAtom は変更なし) ---
 const recalculateGroups = (subset: AnyDuctPart[], allObjects: AnyDuctPart[]): AnyDuctPart[] => {
     const visited = new Set<number>();
     const updatedSubset: AnyDuctPart[] = [];
@@ -509,6 +525,7 @@ export const updateStraightDuctLengthAtom = atom(
         
         const currentDimensions = get(dimensionsAtom); 
         const updatedDimensions = currentDimensions.map(dim => {
+            // (ここでストア内の getPointForDim を使用)
             const p1 = getPointForDim(dim.p1_objId, dim.p1_pointType, dim.p1_pointId, updatedObjects);
             const p2 = getPointForDim(dim.p2_objId, dim.p2_pointType, dim.p2_pointId, updatedObjects);
             if (p1 && p2) {
@@ -589,3 +606,5 @@ export const closeDimensionModalAtom = atom(null, (get, set) => {
 });
 export const openFittingsModalAtom = atom(null, (get, set) => { set(isFittingsModalOpenAtom, true); });
 export const closeFittingsModalAtom = atom(null, (get, set) => { set(isFittingsModalOpenAtom, false); });
+
+export const triggerScreenshotAtom = atom<number>(0);

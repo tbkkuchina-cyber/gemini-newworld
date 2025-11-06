@@ -1,10 +1,25 @@
 import { Camera, AnyDuctPart, Point, SnapPoint, Dimension, Connector, IntersectionPoint, DuctPartType } from "./types";
 import { createDuctPart } from "./duct-models"; 
 
-// ... (getColorForDiameter, drawGrid, drawObjects は変更なし) ...
+// getColorForDiameter (変更なし)
+const DIAMETER_COLORS: Record<string | number, string> = {
+    default: '#60a5fa',
+    100: '#93c5fd',
+    125: '#6ee7b7',
+    150: '#fde047',
+    175: '#fca5a5',
+    200: '#d8b4fe',
+    250: '#fdba74',
+};
 export function getColorForDiameter(diameter: number): string {
     return DIAMETER_COLORS[diameter] || DIAMETER_COLORS.default;
 }
+
+// =================================================================================
+// Drawing Functions
+// =================================================================================
+
+// drawGrid, drawObjects (変更なし)
 export function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera) {
     const canvasWidth = ctx.canvas.width;
     const canvasHeight = ctx.canvas.height;
@@ -43,7 +58,7 @@ export function drawObjects(ctx: CanvasRenderingContext2D, objects: AnyDuctPart[
 // Coordinate and Hit-Test Functions
 // =================================================================================
 
-// ... (screenToWorld, worldToScreen, getObjectAt, findNearestConnector は変更なし) ...
+// screenToWorld, worldToScreen, getObjectAt, findNearestConnector (変更なし)
 export function screenToWorld(screenPoint: Point, canvas: HTMLCanvasElement, camera: Camera): Point {
   const cssX = screenPoint.x; 
   const cssY = screenPoint.y;
@@ -123,7 +138,7 @@ export function findNearestConnector(worldPoint: Point, objects: AnyDuctPart[], 
 }
 
 
-// ★★★ 修正点: export を追加 ★★★
+// (getPointForDim をエクスポート (drawDimensions が使用))
 export function getPointForDim(objId: number, pointType: 'connector' | 'intersection', pointId: number | string, objects: AnyDuctPart[]): Point | null {
     const obj = objects.find(o => o.id === objId);
     if (!obj) return null;
@@ -136,11 +151,10 @@ export function getPointForDim(objId: number, pointType: 'connector' | 'intersec
     } else {
         point = model.getIntersectionPoints().find(p => p.id === pointId);
     }
-
     return point ? { x: point.x, y: point.y } : null;
 };
 
-// ... (drawArrow, drawDimensions, drawAllSnapPoints, drawMeasureTool は変更なし) ...
+// ... (drawArrow は変更なし) ...
 function drawArrow(ctx: CanvasRenderingContext2D, camera: Camera, fromX: number, fromY: number, toX: number, toY: number) {
     const headlen = 8 / camera.zoom; 
     const angle = Math.atan2(toY - fromY, toX - fromX);
@@ -157,6 +171,8 @@ function drawArrow(ctx: CanvasRenderingContext2D, camera: Camera, fromX: number,
     ctx.closePath();
     ctx.fill();
 }
+
+// ★★★ 修正点: `a.1.x` を `a.p1.x` に修正 (ビルドエラー対応) ★★★
 export function drawDimensions(ctx: CanvasRenderingContext2D, dimensions: Dimension[], objects: AnyDuctPart[], camera: Camera) {
     ctx.save();
     ctx.strokeStyle = '#0284c7';
@@ -191,6 +207,7 @@ export function drawDimensions(ctx: CanvasRenderingContext2D, dimensions: Dimens
 
     for (const group of dimensionGroups.values()) {
         group.sort((a, b) => {
+            // ★★★ (タイポ `a.1.x` を `a.p1.x` に修正) ★★★
             const angle = Math.atan2(a.p2.y - a.p1.y, a.p2.x - a.p1.x); 
             const dirX = Math.cos(angle);
             const dirY = Math.sin(angle);
@@ -284,6 +301,8 @@ export function drawDimensions(ctx: CanvasRenderingContext2D, dimensions: Dimens
 
     ctx.restore(); 
 }
+// (drawAllSnapPoints, drawMeasureTool は変更なし)
+// ...
 export function drawAllSnapPoints(ctx: CanvasRenderingContext2D, objects: AnyDuctPart[], camera: Camera) {
   const radius = 8 / camera.zoom;
   const rectSize = 12 / camera.zoom;

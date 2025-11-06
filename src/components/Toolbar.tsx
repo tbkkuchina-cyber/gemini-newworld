@@ -1,7 +1,8 @@
 'use client';
 
 import { useAtom, useSetAtom, useAtomValue } from 'jotai';
-import { ZoomIn, ZoomOut, RefreshCw, Trash2, Ruler, RotateCcw, RotateCw } from 'lucide-react';
+// ★★★ 修正点: Download アイコンをインポート ★★★
+import { ZoomIn, ZoomOut, RefreshCw, Trash2, Ruler, RotateCcw, RotateCw, Printer, Download } from 'lucide-react';
 import { 
   cameraAtom, 
   setCameraAtom, 
@@ -10,7 +11,9 @@ import {
   undoAtom,
   redoAtom,
   canUndoAtom,
-  canRedoAtom
+  canRedoAtom,
+  // ★★★ 修正点: triggerScreenshotAtom をインポート ★★★
+  triggerScreenshotAtom
 } from '@/lib/jotai-store';
 
 const Toolbar = () => {
@@ -22,6 +25,9 @@ const Toolbar = () => {
   const redo = useSetAtom(redoAtom);
   const canUndo = useAtomValue(canUndoAtom);
   const canRedo = useAtomValue(canRedoAtom);
+  
+  // ★★★ 修正点: スクリーンショットトリガーを取得 ★★★
+  const triggerScreenshot = useSetAtom(triggerScreenshotAtom);
 
   const handleZoomIn = () => setCamera({ zoom: camera.zoom * 1.2 });
   const handleZoomOut = () => setCamera({ zoom: camera.zoom / 1.2 });
@@ -33,6 +39,10 @@ const Toolbar = () => {
 
   const handleToggleMeasureMode = () => {
     setMode(mode === 'measure' ? 'pan' : 'measure');
+  };
+  
+  const handlePrint = () => {
+    window.print();
   };
 
   return (
@@ -70,6 +80,15 @@ const Toolbar = () => {
           <Ruler size={20} />
         </button>
 
+        <button onClick={handlePrint} title="印刷" className="p-2 rounded-md hover:bg-gray-200">
+          <Printer size={20} />
+        </button>
+
+        {/* ★★★ 修正点: スクリーンショットボタンを追加 ★★★ */}
+        <button onClick={() => triggerScreenshot(c => c + 1)} title="スクリーンショット" className="p-2 rounded-md hover:bg-gray-200">
+          <Download size={20} />
+        </button>
+        
         <div className="h-6 w-px bg-gray-300"></div>
 
         <button onClick={handleClearCanvas} title="キャンバスをクリア" className="p-2 rounded-md hover:bg-gray-200 text-red-500">

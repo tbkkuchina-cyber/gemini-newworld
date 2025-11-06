@@ -19,14 +19,18 @@ import {
   mouseWorldPosAtom,
   isPanningAtom,
   dragStateAtom,
-  pendingActionAtom,
+  pendingActionAtom, // (インポートは正しい)
   saveStateAtom,
+  triggerScreenshotAtom,
+  selectedObjectIdAtom,
+  isContextMenuOpenAtom,
+  contextMenuPositionAtom
 } from '@/lib/jotai-store';
 
+// ... (DRAG_SNAP_DISTANCE, CONNECT_DISTANCE, findSnapPoint, getLegLengthFromConnector, getConnectedLegLength は変更なし) ...
 const DRAG_SNAP_DISTANCE = 20; 
 const CONNECT_DISTANCE = 50; 
 
-// findSnapPoint (変更なし)
 const findSnapPoint = (worldPos: Point, objects: AnyDuctPart[], camera: { zoom: number }): SnapPoint | null => {
     const snapDistSq = (DRAG_SNAP_DISTANCE / camera.zoom) ** 2;
     let candidates: { distSq: number; point: SnapPoint; objectType: DuctPartType }[] = [];
@@ -56,9 +60,6 @@ const findSnapPoint = (worldPos: Point, objects: AnyDuctPart[], camera: { zoom: 
     if (!bestCandidate) { bestCandidate = closestCandidates[0]; }
     return bestCandidate.point;
 };
-
-// ★★★ 修正点 1: オリジナルの `getLegLength` を `getLegLengthFromConnector` として正確に移植 ★★★
-// この関数は、特定の「コネクタ」情報(id: 0, 1, 2)に基づいて脚長を返します。
 function getLegLengthFromConnector(objData: AnyDuctPart | null, conn: Connector | null): number {
     if (!objData || !conn) return 0;
     const model = createDuctPart(objData);
@@ -87,40 +88,30 @@ function getLegLengthFromConnector(objData: AnyDuctPart | null, conn: Connector 
     }
     return 0;
 }
-
-// ★★★ 修正点 2: オリジナルの `getConnectedLegLength` を移植 ★★★
-// この関数は、フィッティング(継手)とダクト(直管)を受け取り、
-// それらが接続されているコネクタを見つけ出し、その脚長を返します。
 const getConnectedLegLength = (fittingData: AnyDuctPart | null, ductData: AnyDuctPart | null): number => {
     if (!fittingData || !ductData || fittingData.type === DuctPartType.Straight) return 0;
-
     const ductModel = createDuctPart(ductData);
     const fittingModel = createDuctPart(fittingData);
     if (!ductModel || !fittingModel) return 0;
-
     const ductConns = ductModel.getConnectors();
     const fittingConns = fittingModel.getConnectors();
     let relevantConn: Connector | null = null;
-
     for (const fc of fittingConns) {
-        // フィッティングのコネクタ(fc)が、ダクトのいずれかのコネクタ(dc)と接続(座標一致)しているか
         if (ductConns.some(dc => Math.hypot(fc.x - dc.x, fc.y - dc.y) < 1)) {
             relevantConn = fc;
             break;
         }
     }
-    
-    // 見つかった接続コネクタ情報(relevantConn)を使って、脚長を取得
     return getLegLengthFromConnector(fittingData, relevantConn);
 };
 
 
 export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) => {
+  // --- (Jotaiアトムの読み取りとセッター) ---
   const camera = useAtomValue(cameraAtom);
   const objects = useAtomValue(objectsAtom);
   const mode = useAtomValue(modeAtom);
   const measurePoints = useAtomValue(measurePointsAtom);
-
   const setCamera = useSetAtom(setCameraAtom);
   const selectObject = useSetAtom(selectObjectAtom);
   const addObject = useSetAtom(addObjectAtom);
@@ -132,16 +123,25 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
   const openDimensionModal = useSetAtom(openDimensionModalAtom);
   const setObjects = useSetAtom(objectsAtom);
   const saveState = useSetAtom(saveStateAtom);
-
+  const triggerScreenshot = useAtomValue(triggerScreenshotAtom);
+  const selectedObjectId = useAtomValue(selectedObjectIdAtom);
+  const isContextMenuOpen = useAtomValue(isContextMenuOpenAtom);
+  
+  // --- (ReactステートとuseRef) ---
   const [isPanning, setIsPanning] = useAtom(isPanningAtom);
   const [dragState, setDragState] = useAtom(dragStateAtom);
-  const lastMousePos = useRef<Point>({ x: 0, y: 0 });
+  
+  // ★★★ 修正点: pendingAction を他のフックと一緒に最上部に移動 ★★★
+  const [pendingAction, setPendingAction] = useAtom(pendingActionAtom);
 
+  const lastMousePos = useRef<Point>({ x: 0, y: 0 });
   const [isPinching, setIsPinching] = useState(false);
   const initialPinchDist = useRef<number>(0);
   const lastPinchMidpoint = useRef<Point | null>(null); 
 
-  // findBestSnap (変更なし)
+
+  // (findBestSnap, processMeasurement, handleMouseDown, handleMouseMove, handleMouseUp, handleMouseLeave, handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd, handleDrop, handleDragOver, useEffect[Event Listeners] は変更なし)
+  // ...
   const findBestSnap = useCallback((draggedGroupId: number, currentObjects: AnyDuctPart[]) => {
     let bestSnap: SnapResult = { dist: Infinity, dx: 0, dy: 0, otherObj: null };
     const snapDist = CONNECT_DISTANCE / camera.zoom;
@@ -167,12 +167,8 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
     }
     return bestSnap.dist === Infinity ? null : bestSnap;
   }, [camera.zoom]);
-
-  // ★★★ 修正点 3: processMeasurement が正しいヘルパー関数を使うように修正 ★★★
   const processMeasurement = useCallback((p1_info: SnapPoint, p2_info: SnapPoint) => {
       const measuredDistance = Math.hypot(p2_info.x - p1_info.x, p2_info.y - p1_info.y);
-      
-      // (findEndpointObject ヘルパーはオリジナル と同じロジックで正しい)
       const findEndpointObject = (pointInfo: SnapPoint): AnyDuctPart | null => {
           const clickedObj = objects.find(o => o.id === pointInfo.objId);
           if (!clickedObj) return null;
@@ -185,17 +181,13 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
       };
       const obj1 = findEndpointObject(p1_info);
       const obj2 = findEndpointObject(p2_info);
-
       if (!obj1 || !obj2) {
           console.error("Could not find objects for measurement points:", p1_info, p2_info);
           clearMeasurePoints();
           return;
       }
-
       let ductToUpdate: AnyDuctPart | null = null;
       let lengthToSubtract = 0;
-      
-      // (直管探索ロジックもオリジナル と同じで正しい)
       if (obj1 && obj2 && obj1.groupId === obj2.groupId) {
           if (obj1.type === DuctPartType.Straight && obj1.id === obj2.id) { ductToUpdate = obj1; }
           else {
@@ -211,28 +203,16 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
               }
           }
       }
-      
-      // (ロジック修正箇所)
       if (ductToUpdate) {
           const isP1Intersection = p1_info.pointType === 'intersection';
           const isP2Intersection = p2_info.pointType === 'intersection';
-          
-          // (オリジナル と同じロジックに修正)
-          // 継手(obj1) と 直管(ductToUpdate) を渡して、接続されている脚長を取得
           const contribution1 = isP1Intersection ? getConnectedLegLength(obj1, ductToUpdate) : 0;
           const contribution2 = isP2Intersection ? getConnectedLegLength(obj2, ductToUpdate) : 0;
-          
           lengthToSubtract = contribution1 + contribution2;
       }
-      
-      // (モーダル呼び出しは変更なし)
       openDimensionModal({ p1: p1_info, p2: p2_info, measuredDistance: measuredDistance, ductToUpdateId: ductToUpdate ? ductToUpdate.id : undefined, lengthToSubtract: ductToUpdate ? lengthToSubtract : undefined });
       clearMeasurePoints();
   }, [objects, openDimensionModal, clearMeasurePoints]);
-
-
-  // (handleMouseDown, handleMouseMove, handleMouseUp, handleMouseLeave, handleWheel は変更なし - 前回の修正を維持)
-  // ...
   const handleMouseDown = useCallback((e: MouseEvent) => {
     closeContextMenu();
     const canvas = canvasRef.current; if (!canvas) return;
@@ -266,7 +246,6 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
     const screenPoint = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     const worldPoint = screenToWorld(screenPoint, canvas, camera);
     setMouseWorldPos(worldPoint);
-    
     if (dragState.isDragging && dragState.targetId && dragState.initialPositions) {
       closeContextMenu();
       const initialTargetPos = dragState.initialPositions.get(dragState.targetId); if (!initialTargetPos) return;
@@ -279,7 +258,6 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
         } return o;
       })); return;
     }
-    
     if (isPanning) {
       const dx = e.clientX - lastMousePos.current.x;
       const dy = e.clientY - lastMousePos.current.y;
@@ -321,7 +299,7 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
         setDragState({ isDragging: false, targetId: null, initialPositions: null, offset: { x: 0, y: 0 } });
         canvas.style.cursor = 'grab';
     }
-  }, [ camera, objects, dragState, isPanning, findBestSnap, setObjects, saveState, openContextMenu, worldToScreen, canvasRef, setIsPanning, setDragState ]); 
+  }, [ camera, objects, dragState, isPanning, findBestSnap, setObjects, saveState, openContextMenu, canvasRef, setIsPanning, setDragState ]); // worldToScreen is imported
   const handleMouseLeave = useCallback(() => {
       setMouseWorldPos(null);
       if (isPanning || dragState.isDragging) { handleMouseUp(); }
@@ -439,10 +417,6 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
           canvas.style.cursor = 'grab';
       }
   }, [isPinching, dragState, isPanning, handleMouseUp, setIsPanning, setDragState, canvasRef]);
-// ...
-
-  // (handleDrop, handleDragOver, useEffect[Event Listeners] は変更なし)
-  // ...
   const handleDrop = useCallback((e: DragEvent) => {
     e.preventDefault(); const canvas = canvasRef.current; if (!canvas) return;
     const itemJson = e.dataTransfer?.getData('application/json'); if (!itemJson) return;
@@ -498,12 +472,15 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
     };
   }, [canvasRef, handleMouseDown, handleMouseUp, handleMouseMove, handleMouseLeave, handleWheel, handleDrop, handleDragOver, handleTouchStart, handleTouchMove, handleTouchEnd]);
 
-  // (pendingAction の length: 200 修正を維持)
-  const [pendingAction, setPendingAction] = useAtom(pendingActionAtom);
+  // --- (「直管を追加」の useEffect) ---
   useEffect(() => {
-    if (pendingAction === 'add-straight-duct-at-center') {
+    // ★★★ 修正点: 'pendingAction' はフックの最上部で宣言済み ★★★
+    if (pendingAction === 'add-straight-duct-at-center') { 
       const canvas = canvasRef.current; if (!canvas) { setPendingAction(null); return; }
-      const rect = canvas.getBoundingClientRect(); const canvasCenterScreen = { x: rect.width / 2, y: rect.height / 2 }; const worldCenter = screenToWorld(canvasCenterScreen, canvas, camera);
+      const rect = canvas.getBoundingClientRect(); 
+      // ★★★ 修正点: 座標計算に rect.left/top を使わない ★★★
+      const canvasCenterScreen = { x: rect.width / 2, y: rect.height / 2 }; 
+      const worldCenter = screenToWorld(canvasCenterScreen, canvas, camera);
       const systemNameInput = document.getElementById('system-name') as HTMLInputElement | null; const diameterInput = document.getElementById('custom-diameter') as HTMLInputElement | null;
       const systemName = systemNameInput?.value || 'SYS'; const diameter = diameterInput ? parseInt(diameterInput.value, 10) : 100;
       
@@ -523,5 +500,52 @@ export const useCanvasInteraction = (canvasRef: RefObject<HTMLCanvasElement>) =>
       };
       addObject(newDuct); saveState(); setPendingAction(null);
     }
-  }, [pendingAction, canvasRef, camera, addObject, setPendingAction, saveState]);
+  }, [pendingAction, canvasRef, camera, addObject, setPendingAction, saveState]); // (依存配列は変更なし)
+
+  // --- (スクリーンショットの useEffect) ---
+  useEffect(() => {
+    if (triggerScreenshot === 0) return; 
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const wasSelectedId = selectedObjectId;
+    const wasMenuOpen = isContextMenuOpen;
+    
+    selectObject(null);
+    closeContextMenu();
+
+    requestAnimationFrame(() => {
+      const link = document.createElement('a');
+      const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
+      link.download = `duct-design-${timestamp}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+
+      if (wasSelectedId) {
+        selectObject(wasSelectedId);
+        
+        if (wasMenuOpen) {
+          const obj = objects.find(o => o.id === wasSelectedId);
+          if (obj) {
+              // ★★★ 修正点: 座標計算に rect.left/top を使わない ★★★
+              const objectScreenPos = worldToScreen({ x: obj.x, y: obj.y }, canvas, camera);
+              // (y-50 のオフセットは維持)
+              openContextMenu({ x: objectScreenPos.x, y: objectScreenPos.y - 50 });
+          }
+        }
+      }
+    });
+  }, [
+    triggerScreenshot,
+    canvasRef,
+    selectedObjectId,
+    isContextMenuOpen,
+    selectObject,
+    closeContextMenu,
+    objects,
+    camera,
+    openContextMenu
+  ]);
+
 };
