@@ -6,9 +6,10 @@ import {
   modeAtom,
   measurePointsAtom,
   mouseWorldPosAtom,
-  dimensionsAtom
-} from '@/lib/jotai-store';
-import { drawGrid, drawObjects, drawAllSnapPoints, drawMeasureTool, drawDimensions } from '@/lib/canvas-utils';
+  // ★★★ 修正点: allDimensionsAtom をインポート ★★★
+  allDimensionsAtom
+} from '@/lib/jotai-store'; 
+import { drawGrid, drawObjects, drawAllSnapPoints, drawMeasureTool, drawDimensions } from '@/lib/canvas-utils'; 
 
 export const useCanvas = (canvasRef: RefObject<HTMLCanvasElement>) => {
   const objects = useAtomValue(objectsAtom);
@@ -16,7 +17,9 @@ export const useCanvas = (canvasRef: RefObject<HTMLCanvasElement>) => {
   const mode = useAtomValue(modeAtom);
   const measurePoints = useAtomValue(measurePointsAtom);
   const mouseWorldPos = useAtomValue(mouseWorldPosAtom);
-  const dimensions = useAtomValue(dimensionsAtom);
+  
+  // ★★★ 修正点: dimensionsAtom -> allDimensionsAtom に変更 ★★★
+  const dimensions = useAtomValue(allDimensionsAtom);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -36,28 +39,21 @@ export const useCanvas = (canvasRef: RefObject<HTMLCanvasElement>) => {
           return;
       }
 
-      // (DPRの定義を削除)
-      // const dpr = window.devicePixelRatio || 1;
-      const canvasWidth = ctx.canvas.width;  // cssWidth ではなく canvas.width を使用
-      const canvasHeight = ctx.canvas.height; // cssHeight ではなく canvas.height を使用
+      const canvasWidth = ctx.canvas.width;  
+      const canvasHeight = ctx.canvas.height; 
 
       ctx.save();
-      ctx.clearRect(0, 0, canvasWidth, canvasHeight); // 修正
-
-      // ★★★ 修正点: DPRスケーリングを削除 ★★★
-      // ctx.scale(dpr, dpr); // 削除
-
-      // ★★★ 修正点: 座標変換を canvas.width/height 基準に変更 ★★★
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight); 
+      
       ctx.translate(canvasWidth / 2, canvasHeight / 2);
       ctx.scale(camera.zoom, camera.zoom);
-      // (オリジナルスクリプトと同じトランスフォームロジック)
       ctx.translate(-canvasWidth / 2 + camera.x, -canvasHeight / 2 + camera.y);
 
-
-      // (以降の描画関数は変更なし)
       drawGrid(ctx, camera);
       drawObjects(ctx, objects, camera);
       drawAllSnapPoints(ctx, objects, camera);
+      
+      // (dimensions には自動計算された赤い線と、手動の青い線の両方が入る)
       drawDimensions(ctx, dimensions, objects, camera);
 
       if (mode === 'measure') {
@@ -69,5 +65,6 @@ export const useCanvas = (canvasRef: RefObject<HTMLCanvasElement>) => {
 
     draw();
 
+  // ★★★ 修正点: 依存配列を allDimensionsAtom (の実体は dimensions) に変更 ★★★
   }, [objects, camera, mode, measurePoints, mouseWorldPos, dimensions, canvasRef]);
 };
