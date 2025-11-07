@@ -15,11 +15,9 @@ const CanvasArea = () => {
     if (!canvas) return;
 
     const resizeObserver = new ResizeObserver(() => {
-      // ★★★ 修正点: DPRスケーリングを削除 ★★★
-      // const dpr = window.devicePixelRatio || 1; // 削除
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width; // * dpr; // 削除 (CSSピクセルと内部解像度を一致させる)
-      canvas.height = rect.height; // * dpr; // 削除
+      canvas.width = rect.width; 
+      canvas.height = rect.height;
     });
 
     resizeObserver.observe(canvas);
@@ -30,7 +28,10 @@ const CanvasArea = () => {
   }, []);
 
   return (
-    <div className="flex-1 bg-gray-200 relative overflow-hidden">
+    // ★★★ 修正点 ★★★
+    // touch-action-none を追加し、ホイールやピンチ操作が
+    // ブラウザに奪われるのを防ぎます。
+    <div className="flex-1 bg-gray-200 relative overflow-hidden touch-action-none">
       <canvas ref={canvasRef} className="w-full h-full"></canvas>
     </div>
   );

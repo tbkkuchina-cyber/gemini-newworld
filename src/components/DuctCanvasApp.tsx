@@ -3,13 +3,15 @@
 import { useEffect } from "react";
 import dynamic from 'next/dynamic';
 import { useAtom, useSetAtom, useAtomValue } from 'jotai';
-// --- 修正: 不要なスペースを削除 ---
+
+// --- すべてのインポートを正しく記述 ---
 import CanvasArea from "@/components/CanvasArea";
 import ConfirmModal from "@/components/ConfirmModal";
 import ContextMenu from "@/components/ContextMenu";
 import DimensionModal from "@/components/DimensionModal";
 import FittingsModal from "@/components/FittingsModal";
-import Toolbar from "@/components/Toolbar";
+import Toolbar from "@/components/Toolbar"; 
+
 import {
   isClearCanvasModalOpenAtom,
   clearCanvasAtom,
@@ -20,11 +22,11 @@ import {
   dimensionModalContentAtom,
   closeDimensionModalAtom,
   notificationAtom
-} from "@/lib/jotai-store"; // ここも修正
-// ---------------------------------
+} from "@/lib/jotai-store"; 
+// --- 修正ここまで ---
 
 // Palette はクライアントサイドでのみレンダリング
-const Palette = dynamic(() => import('@/components/Palette'), { ssr: false }); // ここも修正
+const Palette = dynamic(() => import('@/components/Palette'), { ssr: false });
 
 // --- Notification Component ---
 const NotificationDisplay = () => {
@@ -65,9 +67,15 @@ const DuctCanvasApp = () => {
   };
 
   return (
-    <div className="w-screen h-screen bg-gray-100 text-gray-800 flex flex-col md:flex-row relative">
+    // ★★★ 修正点 ★★★
+    // h-screen (100vh) を h-full (100%) に変更。
+    // (layout.tsx の body が h-full なので、その高さを継承)
+    <div className="w-full h-full bg-gray-100 text-gray-800 flex flex-col md:flex-row relative">
       {/* Main Content */}
-      <main className="flex-1 flex flex-col relative">
+      {/* ★★★ 修正点 ★★★
+          flex-1 (残りのスペース) と overflow-hidden (パレット領域を侵害しない) を設定
+      */}
+      <main className="flex-1 flex flex-col relative overflow-hidden md:flex-1">
         <Toolbar />
         <CanvasArea />
         <ContextMenu isOpen={isContextMenuOpen} position={contextMenuPosition} />
