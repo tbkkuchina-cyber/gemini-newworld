@@ -51,6 +51,10 @@ export const isFittingsModalOpenAtom = atom<boolean>(false);
 export const nextIdAtom = atom<number>(0);
 export const pendingActionAtom = atom<string | null>(null);
 
+// ★★★ 修正点: 以下のアトムを追加 ★★★
+// デフォルトは true (開いた状態) にします
+export const isPaletteOpenAtom = atom<boolean>(true);
+
 // --- Notification Atom ---
 export const notificationAtom = atom<{ message: string, id: number } | null>(null);
 export const showNotificationAtom = atom(null, (get, set, message: string) => {

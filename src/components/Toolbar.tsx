@@ -1,8 +1,7 @@
 'use client';
 
 import { useAtom, useSetAtom, useAtomValue } from 'jotai';
-// ★★★ 修正点: Download アイコンをインポート ★★★
-import { ZoomIn, ZoomOut, RefreshCw, Trash2, Ruler, RotateCcw, RotateCw, Printer, Download } from 'lucide-react';
+import { ZoomIn, ZoomOut, RefreshCw, Trash2, Ruler, RotateCcw, RotateCw, Printer, Download, PanelLeft } from 'lucide-react';
 import { 
   cameraAtom, 
   setCameraAtom, 
@@ -12,8 +11,8 @@ import {
   redoAtom,
   canUndoAtom,
   canRedoAtom,
-  // ★★★ 修正点: triggerScreenshotAtom をインポート ★★★
-  triggerScreenshotAtom
+  triggerScreenshotAtom,
+  isPaletteOpenAtom
 } from '@/lib/jotai-store';
 
 const Toolbar = () => {
@@ -25,30 +24,31 @@ const Toolbar = () => {
   const redo = useSetAtom(redoAtom);
   const canUndo = useAtomValue(canUndoAtom);
   const canRedo = useAtomValue(canRedoAtom);
-  
-  // ★★★ 修正点: スクリーンショットトリガーを取得 ★★★
   const triggerScreenshot = useSetAtom(triggerScreenshotAtom);
+  const [isPaletteOpen, setIsPaletteOpen] = useAtom(isPaletteOpenAtom);
 
   const handleZoomIn = () => setCamera({ zoom: camera.zoom * 1.2 });
   const handleZoomOut = () => setCamera({ zoom: camera.zoom / 1.2 });
   const handleResetView = () => setCamera({ x: 0, y: 0, zoom: 1 });
-
-  const handleClearCanvas = () => {
-    setIsClearModalOpen(true);
-  };
-
-  const handleToggleMeasureMode = () => {
-    setMode(mode === 'measure' ? 'pan' : 'measure');
-  };
-  
-  const handlePrint = () => {
-    window.print();
-  };
+  const handleClearCanvas = () => setIsClearModalOpen(true);
+  const handleToggleMeasureMode = () => setMode(mode === 'measure' ? 'pan' : 'measure');
+  const handlePrint = () => window.print();
 
   return (
     <header className="bg-white/80 backdrop-blur-sm shadow-md p-2 flex items-center justify-between z-10">
       <div className="flex items-center flex-wrap gap-x-1 md:gap-x-2 gap-y-1">
-        {/* History */}
+        
+        {/* Palette Toggle (Mobile only) */}
+        <button 
+          onClick={() => setIsPaletteOpen(!isPaletteOpen)} 
+          title="パレットを開閉" 
+          className="p-2 rounded-md hover:bg-gray-200 md:hidden"
+        >
+          <PanelLeft size={20} />
+        </button>
+        <div className="h-6 w-px bg-gray-300 md:hidden"></div>
+
+        {/* 1. History */}
         <button onClick={undo} title="元に戻す" disabled={!canUndo} className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed">
           <RotateCcw size={20} />
         </button>
@@ -58,7 +58,7 @@ const Toolbar = () => {
 
         <div className="h-6 w-px bg-gray-300"></div>
 
-        {/* View Controls */}
+        {/* 2. View Controls */}
         <button onClick={handleZoomIn} title="ズームイン" className="p-2 rounded-md hover:bg-gray-200">
           <ZoomIn size={20} />
         </button>
@@ -69,30 +69,36 @@ const Toolbar = () => {
           <RefreshCw size={20} />
         </button>
 
+        {/* ★★★ 修正点: オリジナルの順序に変更 ★★★ */}
+
         <div className="h-6 w-px bg-gray-300"></div>
 
-        {/* Tools */}
-        <button 
-          onClick={handleToggleMeasureMode} 
-          title="2点間計測" 
-          className={`p-2 rounded-md hover:bg-gray-200 ${mode === 'measure' ? 'bg-indigo-200' : ''}`}
-        >
-          <Ruler size={20} />
+        {/* 3. Clear */}
+        <button onClick={handleClearCanvas} title="キャンバスをクリア" className="p-2 rounded-md hover:bg-gray-200 text-red-500">
+          <Trash2 size={20} />
         </button>
+        
+        <div className="h-6 w-px bg-gray-300"></div>
 
+        {/* 4. Print */}
         <button onClick={handlePrint} title="印刷" className="p-2 rounded-md hover:bg-gray-200">
           <Printer size={20} />
         </button>
 
-        {/* ★★★ 修正点: スクリーンショットボタンを追加 ★★★ */}
+        {/* 5. Screenshot */}
         <button onClick={() => triggerScreenshot(c => c + 1)} title="スクリーンショット" className="p-2 rounded-md hover:bg-gray-200">
           <Download size={20} />
         </button>
         
         <div className="h-6 w-px bg-gray-300"></div>
 
-        <button onClick={handleClearCanvas} title="キャンバスをクリア" className="p-2 rounded-md hover:bg-gray-200 text-red-500">
-          <Trash2 size={20} />
+        {/* 6. Measure */}
+        <button 
+          onClick={handleToggleMeasureMode} 
+          title="2点間計測" 
+          className={`p-2 rounded-md hover:bg-gray-200 ${mode === 'measure' ? 'bg-indigo-200' : ''}`}
+        >
+          <Ruler size={20} />
         </button>
 
       </div>

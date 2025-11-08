@@ -3,12 +3,16 @@
 import { useAtomValue, useSetAtom } from 'jotai';
 import PaletteItem from "./PaletteItem";
 import { StraightDuct, DuctPartType } from "@/lib/types";
-import { fittingsAtom, addObjectAtom, openFittingsModalAtom, pendingActionAtom } from '@/lib/jotai-store';
+// ★★★ 修正点: isPaletteOpenAtom をインポート ★★★
+import { fittingsAtom, addObjectAtom, openFittingsModalAtom, pendingActionAtom, isPaletteOpenAtom } from '@/lib/jotai-store';
 
 const Palette = () => {
   const fittings = useAtomValue(fittingsAtom);
   const setPendingAction = useSetAtom(pendingActionAtom);
   const openFittingsModal = useSetAtom(openFittingsModalAtom);
+
+  // ★★★ 修正点: パレット開閉状態を取得 ★★★
+  const isPaletteOpen = useAtomValue(isPaletteOpenAtom);
 
   const handleAddStraightDuct = () => {
     setPendingAction('add-straight-duct-at-center');
@@ -18,17 +22,36 @@ const Palette = () => {
     <aside 
       id="palette" 
       // ★★★ 修正点 ★★★
-      // h-80 (320pxの固定高) と shrink-0 (縮小しない) を設定
-      // md:h-auto でデスクトップ表示時は高さをリセット
-      className="w-full h-80 shrink-0 md:h-auto md:w-64 md:shrink-0 bg-white shadow-lg p-4 overflow-y-auto order-last md:order-first"
+      // 1. isPaletteOpen が false の場合は 'hidden' を適用
+      // 2. デスクトップでは 'md:block' で強制的に表示
+      className={`
+        w-full h-80 shrink-0 
+        md:h-auto md:w-64 md:shrink-0 
+        bg-white shadow-lg p-4 overflow-y-auto 
+        order-last md:order-first
+        ${isPaletteOpen ? 'block' : 'hidden'} 
+        md:block
+      `}
     >
-      <div className="mb-6">
-        <label htmlFor="system-name" className="text-sm font-medium">系統名</label>
-        <input type="text" id="system-name" defaultValue="SA-1" className="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500" />
+      <div className="mb-2"> 
+        <input 
+          type="text" 
+          id="system-name" 
+          defaultValue="SA-1" 
+          className="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500" 
+          placeholder="系統名"
+        />
       </div>
       <div className="mb-4">
-        <label htmlFor="custom-diameter" className="text-sm font-medium">直径 (mm)</label>
-        <input type="number" id="custom-diameter" defaultValue="100" step="25" min="25" className="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500" />
+        <input 
+          type="number" 
+          id="custom-diameter" 
+          defaultValue="100" 
+          step="25" 
+          min="25" 
+          className="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500" 
+          placeholder="直径 (mm)"
+        />
       </div>
       <button onClick={handleAddStraightDuct} className="w-full bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-indigo-700 transition-colors mb-6">
         直管を追加
