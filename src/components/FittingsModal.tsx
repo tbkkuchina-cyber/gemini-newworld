@@ -36,114 +36,107 @@ const FittingsModal = () => {
   const saveFittings = useSetAtom(saveFittingsAtom);
 
   const [localFittings, setLocalFittings] = useState<Fittings>({});
-  // スクロール可能エリアへの参照を作成
   const scrollableContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // モーダルが開かれたときにグローバル状態をローカル状態にコピー
     if (isOpen) {
+        // ★★★ 修正点 ★★★
+        // ここでの deep copy は問題ありません (モーダルを開くときに1回だけ実行されるため)
         setLocalFittings(JSON.parse(JSON.stringify(globalFittings)));
     }
   }, [globalFittings, isOpen]);
 
-  // Effect to globally prevent background scrolling when modal is open
+  // (背景スクロール防止の useEffect は変更なし)
   useEffect(() => {
     const scrollableElement = scrollableContentRef.current;
-
-    // --- 修正: preventDefault ---
-    // イベントターゲットがスクロール可能エリアの外側の場合のみ preventDefault を呼ぶ
     const preventDefaultForBackground = (e: Event) => {
         if (scrollableElement && e.target instanceof Node && scrollableElement.contains(e.target)) {
-            // スクロール可能エリア内でのイベントはデフォルト動作を許可
             return;
         }
-        // スクロール可能エリア外でのイベントはデフォルト動作（背景スクロール）を禁止
         e.preventDefault();
     };
-
-    // --- 修正: preventDefaultForScrollKeys ---
-    // イベントターゲットがスクロール可能エリアの外側の場合のみ preventDefault を呼ぶ
     const preventKeysForBackground = (e: KeyboardEvent) => {
         if (scrollableElement && e.target instanceof Node && scrollableElement.contains(e.target)) {
-             // スクロール可能エリア内でのキー操作は許可
-             // (ただし、入力欄での矢印キー移動などはブラウザやOSの挙動に依存)
             return;
         }
-        // スクロール可能エリア外でのスクロール関連キー操作を禁止
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'PageUp', 'PageDown', 'End', 'Home'].includes(e.key)) {
             e.preventDefault();
         }
     };
-
     if (isOpen) {
       window.addEventListener('wheel', preventDefaultForBackground, { passive: false });
       window.addEventListener('keydown', preventKeysForBackground, { passive: false });
     }
-
-    // クリーンアップ関数
     return () => {
       window.removeEventListener('wheel', preventDefaultForBackground);
       window.removeEventListener('keydown', preventKeysForBackground);
     };
-  }, [isOpen]); // 依存配列に scrollableContentRef は不要 (ref は再レンダリングを引き起こさない)
-
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  // handleInputChange, handleAddRow, handleDeleteRow, handleSaveChanges (変更なし)
+  // ★★★ 修正点 ★★★
+  // `JSON.parse(JSON.stringify(...))` を削除し、
+  // 変更された項目のみをイミュータブル（immutable）に更新する
+  // 効率的なロジックに変更します。
   const handleInputChange = (category: string, index: number, prop: string, value: any) => {
-    const newFittings = JSON.parse(JSON.stringify(localFittings));
-    const item = newFittings[category][index];
+    setLocalFittings(prevFittings => {
+      // 1. カテゴリの辞書を浅くコピー
+      const newFittings = { ...prevFittings };
+      
+      // 2. 変更対象のカテゴリの配列を浅くコピー
+      const newItems = [...newFittings[category]];
+      
+      // 3. 変更対象のアイテムを浅くコピー
+      const newItem = { ...newItems[index] };
 
-    (item as any)[prop] = value;
+      // 4. 新しいアイテムのプロパティを更新
+      (newItem as any)[prop] = value;
 
-    // 直径が変更されたら名前を自動更新するロジック (必要であれば)
-    if (prop.includes('diameter')) {
-        // Find the specific item type to apply correct naming logic
-        if (item.type === DuctPartType.TeeReducer || item.type === DuctPartType.YBranchReducer || item.type === DuctPartType.Reducer || item.type === DuctPartType.Elbow90 || item.type === DuctPartType.AdjustableElbow || item.type === DuctPartType.Damper) {
-           item.name = generateNameFromDiameters(item);
-        }
-    }
+      // 5. 自動命名・自動計算ロジックを (newItem に対して) 実行
+      if (prop.includes('diameter')) {
+          if (newItem.type === DuctPartType.TeeReducer || newItem.type === DuctPartType.YBranchReducer || newItem.type === DuctPartType.Reducer || newItem.type === DuctPartType.Elbow90 || newItem.type === DuctPartType.AdjustableElbow || newItem.type === DuctPartType.Damper) {
+             newItem.name = generateNameFromDiameters(newItem);
+          }
+      }
+      if (prop === 'diameter' && (newItem.type === DuctPartType.Elbow90 || newItem.type === DuctPartType.AdjustableElbow)) {
+          const diameterVal = typeof value === 'number' ? value : 0;
+          if (newItem.type === DuctPartType.Elbow90) {
+              newItem.legLength = diameterVal;
+          } else if (newItem.angle && newItem.angle !== 90) {
+              if (newItem.angle === 135) {
+                   newItem.legLength = Math.round(diameterVal * 0.4);
+              }
+          }
+      }
 
-     // エルボの直径変更時に脚長を自動計算
-    if (prop === 'diameter' && (item.type === DuctPartType.Elbow90 || item.type === DuctPartType.AdjustableElbow)) {
-        const diameterVal = typeof value === 'number' ? value : 0;
-        if (item.type === DuctPartType.Elbow90) {
-            item.legLength = diameterVal;
-        } else if (item.angle && item.angle !== 90) { // 90度以外の AdjustableElbow
-             // 45度エルボ (angle=135) 相当の計算、または他の角度用の計算
-             // 元のロジックでは 45度(angle=135) のみ legLength = diameter * 0.4 だった
-             // 必要に応じて他の角度のルールを追加
-            if (item.angle === 135) {
-                 item.legLength = Math.round(diameterVal * 0.4);
-            }
-            // 他の角度の AdjustableElbow の legLength は現状維持または別途ルール設定
-        }
-    }
+      // 6. 新しい配列に新しいアイテムをセット
+      newItems[index] = newItem;
+      
+      // 7. 新しい辞書に新しい配列をセット
+      newFittings[category] = newItems;
 
-
-    setLocalFittings(newFittings);
+      // 8. 新しい辞書を返す
+      return newFittings;
+    });
   };
+  // ★★★ 修正ここまで ★★★
 
+  // (handleAddRow, handleDeleteRow, handleSaveChanges は変更なし)
   const handleAddRow = (category: string) => {
     const newFittings = JSON.parse(JSON.stringify(localFittings));
     const items = newFittings[category];
-    // 新しい行のテンプレートはカテゴリの最初のアイテムをコピー（なければ空）
-    const templateItem = items.length > 0 ? items[0] : { type: items[0]?.type || DuctPartType.Straight }; // type は最低限引き継ぐ
-
+    const templateItem = items.length > 0 ? items[0] : { type: items[0]?.type || DuctPartType.Straight };
     const newItem: FittingItem = {
-        ...templateItem, // 基本構造を引き継ぐ
+        ...templateItem,
         id: `${category.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}`,
-        name: '新規', // デフォルト名
-        // diameter や length など、必要に応じてデフォルト値を設定
+        name: '新規',
         diameter: templateItem.diameter || 100,
         visible: true,
     };
-    // 自動計算されるプロパティがあればここで初期計算
     newItem.name = generateNameFromDiameters(newItem);
     if (newItem.type === DuctPartType.Elbow90) newItem.legLength = newItem.diameter;
-    // 他のタイプの初期値設定...
-
+    
     newFittings[category].push(newItem);
     setLocalFittings(newFittings);
   };
@@ -160,8 +153,9 @@ const FittingsModal = () => {
     onClose();
   };
 
-  // FittingCategoryEditor コンポーネント (変更なし)
+  // (FittingCategoryEditor コンポーネントは変更なし)
   const FittingCategoryEditor = ({ category, items }: { category: string, items: FittingItem[] }) => {
+    // ... (中身は変更なし)
     const headers = useMemo(() => {
         const headerSet = new Set<string>();
         items.forEach(item => { Object.keys(item).forEach(key => headerSet.add(key)); });
@@ -179,14 +173,13 @@ const FittingsModal = () => {
 
     const renderEditableCell = (item: FittingItem, index: number, prop: string) => {
         const value = (item as any)[prop];
-        // 名前フィールドは直径に基づいて自動生成される場合があるため、 readOnly 条件を調整
         const isNameReadOnly = prop === 'name' && (
             item.type === DuctPartType.TeeReducer ||
             item.type === DuctPartType.YBranchReducer ||
             item.type === DuctPartType.Reducer ||
-            item.type === DuctPartType.Elbow90 || // 90度エルボも自動命名
-            item.type === DuctPartType.AdjustableElbow || // 可変エルボも自動命名
-            item.type === DuctPartType.Damper // ダンパーも自動命名
+            item.type === DuctPartType.Elbow90 || 
+            item.type === DuctPartType.AdjustableElbow || 
+            item.type === DuctPartType.Damper 
         );
         const isReadOnly = prop === 'id' || prop === 'type' || isNameReadOnly;
 
@@ -214,12 +207,10 @@ const FittingsModal = () => {
             <h3 className="text-xl font-semibold mb-3 border-b pb-2">{category}</h3>
             <div className="overflow-x-auto">
                 <table className="w-full text-left table-auto border-collapse">
-                    {/* [修正] <thead> と <tr> の間の空白を削除 */}
                     <thead><tr>
                         {headers.map(header => ( <th key={header} className="p-2 text-sm font-semibold capitalize border-b-2">{headerLabelMap[header] || header}</th> ))}
                         <th className="p-2 text-sm font-semibold border-b-2">削除</th>
                     </tr></thead>
-                    {/* [修正] <tbody> と {items.map...} の間の空白を削除 */}
                     <tbody>{items.map((item, index) => (
                         <tr key={item.id} className="border-t">
                             {headers.map(header => renderEditableCell(item, index, header))}
@@ -246,10 +237,9 @@ const FittingsModal = () => {
             <X size={24} />
           </button>
         </div>
-        {/* スクロール可能エリアに ref を設定 */}
         <div ref={scrollableContentRef} className="flex-1 overflow-y-auto pr-2">
           {Object.entries(localFittings)
-            .sort(([catA], [catB]) => catA.localeCompare(catB)) // カテゴリ名でソート
+            .sort(([catA], [catB]) => catA.localeCompare(catB)) 
             .map(([category, items]) => (
              <FittingCategoryEditor key={category} category={category} items={items} />
            ))}
